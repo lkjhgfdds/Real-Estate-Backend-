@@ -1,0 +1,68 @@
+const Report   = require('../../models/report.model');
+const asyncHandler = require('../../utils/asyncHandler');
+const AppError     = require('../../utils/AppError');
+const { createNotification } = require('../../utils/notificationHelper');
+
+// ─── Submit Report ────────────────────────────────────────────
+exports.submitReport = asyncHandler(async (req, res, next) => {
+  const { targetType, targetId, reason, description } = req.body;
+
+  // Prevent reporting the same item twice
+  const existing = await Report.findOne({
+    reporter: req.user._id, targetType, targetId, status: { $in: ['pending', 'reviewed'] },
+  });
+  if (existing) return next(new AppError('You have already reported this content', 409));
+
+  const report = await Report.create({
+    reporter: req.user._id, targetType, targetId, reason, description,
+  });
+
+  res.status(201).json({ status: 'success', message: 'Report submitted successfully and will be reviewed soon', data: { report } });
+});
+
+// ─── Get All Reports (Admin) ──────────────────────────────────
+exports.getAllReports = asyncHandler(async (req, res) => {
+  const { status, targetType, page = 1, limit = 20 } = req.query;
+  const filter = {};
+  if (status)     filter.status     = status;
+  if (targetType) filter.targetType = targetType;
+
+  const skip  = (page - 1) * limit;
+  const total = await Report.countDocuments(filter);
+  const reports = await Report.find(filter)
+    .populate('reporter', 'name email')
+    .sort('-createdAt').skip(skip).limit(Number(limit));
+
+  res.status(200).json({ status: 'success', total, page: Number(page), pages: Math.ceil(total / limit), data: { reports } });
+});
+
+// ─── Review Report (Admin) ────────────────────────────────────
+exports.reviewReport = asyncHandler(async (req, res, next) => {
+  const { status, adminNote } = req.body;
+  const validStatuses = ['reviewed', 'resolved', 'dismissed'];
+  if (!validStatuses.includes(status)) return next(new AppError('Invalid status', 400));
+
+  const report = await Report.findByIdAndUpdate(
+    req.params.id,
+    { status, adminNote, reviewedBy: req.user._id, reviewedAt: new Date() },
+    { new: true }
+  ).populate('reporter', '_id name');
+
+  if (!report) return next(new AppError('Report not found', 404));
+
+  // Notify reporter about the report result
+  await createNotification(req.io, report.reporter._id, {
+    type:    'system',
+    title:   'Your report has been reviewed',
+    message: `Your report has been ${status === 'resolved' ? 'resolved' : status === 'dismissed' ? 'dismissed' : 'reviewed'}`,
+    link:    '/reports',
+  }).catch(() => {});
+
+  res.status(200).json({ status: 'success', data: { report } });
+});
+
+// ─── My Reports ───────────────────────────────────────────────
+exports.getMyReports = asyncHandler(async (req, res) => {
+  const reports = await Report.find({ reporter: req.user._id }).sort('-createdAt');
+  res.status(200).json({ status: 'success', count: reports.length, data: { reports } });
+});

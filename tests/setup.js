@@ -1,0 +1,72 @@
+/**
+ * Global Test Setup
+ * Uses MongoMemoryServer for isolated, in-memory MongoDB testing.
+ * Provides a global helper for creating pre-verified users.
+ */
+
+const mongoose              = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+
+let mongod;
+
+// ─── Global Setup ──────────────────────────────────────────────
+beforeAll(async () => {
+  mongod = await MongoMemoryServer.create();
+  const uri = mongod.getUri();
+
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
+
+  await mongoose.connect(uri);
+
+  process.env.JWT_SECRET         = 'test_secret_key_at_least_32_chars_long_for_test';
+  process.env.JWT_REFRESH_SECRET = 'test_refresh_secret_different_key_for_test_env';
+  process.env.JWT_EXPIRES_IN     = '1d';
+  process.env.NODE_ENV           = 'test';
+  process.env.MONGO_URI          = uri;
+  process.env.CLIENT_URL         = 'http://localhost:3000';
+  process.env.REDIS_URL          = '';   // disable Redis in tests
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  if (mongod) await mongod.stop();
+});
+
+// Clean all collections between each test
+afterEach(async () => {
+  const collections = mongoose.connection.collections;
+  for (const key in collections) {
+    await collections[key].deleteMany({});
+  }
+});
+
+/**
+ * Helper: register + verify + login a user in one step.
+ * Returns { token, refreshToken, user }
+ */
+global.createVerifiedUser = async (request, app, { name, email, password, role = 'buyer' } = {}) => {
+  const User = require('../src/models/user.model');
+
+  // 1. Register
+  const regRes = await request(app).post('/api/v1/auth/register').send({ name, email, password });
+  if (regRes.status !== 201) {
+    throw new Error(`Register failed for ${email}: ${JSON.stringify(regRes.body)}`);
+  }
+
+  // 2. Mark as verified + set desired role directly in DB
+  await User.findOneAndUpdate({ email }, { isVerified: true, role });
+
+  // 3. Login
+  const loginRes = await request(app).post('/api/v1/auth/login').send({ email, password });
+  if (loginRes.status !== 200) {
+    throw new Error(`Login failed for ${email}: ${JSON.stringify(loginRes.body)}`);
+  }
+
+  return {
+    token:        loginRes.body.token,
+    refreshToken: loginRes.body.refreshToken,
+    user:         loginRes.body.data.user,
+  };
+};

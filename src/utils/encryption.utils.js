@@ -1,0 +1,150 @@
+const crypto = require('crypto');
+const logger = require('./logger');
+
+// ─────────────────────────────────────────────────────────────────
+// Encryption Utilities (AES-256-GCM)
+// ─────────────────────────────────────────────────────────────────
+// Used for encrypting sensitive data like IBAN, bank account details
+// Provides authenticated encryption (detect tampering)
+// ─────────────────────────────────────────────────────────────────
+
+const ALGORITHM = 'aes-256-gcm';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+
+// Validate encryption key on startup
+if (!ENCRYPTION_KEY) {
+  logger.error('[Encryption] ENCRYPTION_KEY not set in .env');
+  throw new Error('ENCRYPTION_KEY environment variable is required');
+}
+
+// Derive key from password using scrypt (like password hashing)
+const KEY = crypto.scryptSync(ENCRYPTION_KEY, 'payment-system', 32);
+
+/**
+ * Encrypt a sensitive field (e.g., IBAN)
+ * Returns: { encrypted, iv, authTag } for storage
+ */
+exports.encryptField = (value) => {
+  try {
+    if (!value) return null;
+
+    // Generate random IV (Initialization Vector)
+    const iv = crypto.randomBytes(16);
+
+    // Create cipher
+    const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+
+    // Encrypt the value
+    let encrypted = cipher.update(String(value), 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    // Get authentication tag (detects tampering)
+    const authTag = cipher.getAuthTag();
+
+    return {
+      encrypted,
+      iv: iv.toString('hex'),
+      authTag: authTag.toString('hex'),
+    };
+  } catch (err) {
+    logger.error('[Encryption] encryptField error:', err);
+    throw new Error('Encryption failed');
+  }
+};
+
+/**
+ * Decrypt a sensitive field
+ * Expects: { encrypted, iv, authTag }
+ */
+exports.decryptField = (encryptedData) => {
+  try {
+    if (!encryptedData || !encryptedData.encrypted) return null;
+
+    const { encrypted, iv, authTag } = encryptedData;
+
+    // Recreate decipher
+    const decipher = crypto.createDecipheriv(ALGORITHM, KEY, Buffer.from(iv, 'hex'));
+
+    // Set auth tag (verify not tampered)
+    decipher.setAuthTag(Buffer.from(authTag, 'hex'));
+
+    // Decrypt
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (err) {
+    logger.error('[Encryption] decryptField error:', err);
+    throw new Error('Decryption failed - data may be tampered');
+  }
+};
+
+/**
+ * Extract last 4 characters (for display without encryption)
+ * E.g., IBAN "DE89370400440532013000" → "3000"
+ */
+exports.extractLast4 = (value) => {
+  if (!value) return '';
+  return String(value).slice(-4);
+};
+
+/**
+ * Validate IBAN format (basic check)
+ * Full validation would require provider-specific rules
+ */
+exports.validateIBAN = (iban) => {
+  if (!iban) return false;
+  // Remove spaces and convert to uppercase
+  const cleanIBAN = String(iban).replace(/\s/g, '').toUpperCase();
+  // Basic: IBAN is 15-34 characters
+  return /^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$/.test(cleanIBAN);
+};
+
+/**
+ * Hash sensitive data for comparison (one-way)
+ * Used for fraud detection, duplicate detection
+ */
+exports.hashField = (value) => {
+  try {
+    return crypto.createHash('sha256').update(String(value)).digest('hex');
+  } catch (err) {
+    logger.error('[Encryption] hashField error:', err);
+    throw new Error('Hash failed');
+  }
+};
+
+/**
+ * Generate secure random token (for payment verification, etc.)
+ */
+exports.generateToken = (length = 32) => {
+  return crypto.randomBytes(length).toString('hex');
+};
+
+/**
+ * Verify webhook signature (prevent spoofing)
+ * Paymob/PayPal sends signature, we verify with our secret
+ */
+exports.verifyWebhookSignature = (payload, signature, secret) => {
+  try {
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(JSON.stringify(payload));
+    const expectedSignature = hmac.digest('hex');
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch (err) {
+    logger.error('[Encryption] verifyWebhookSignature error:', err);
+    return false;
+  }
+};
+
+module.exports = Object.freeze({
+  encryptField: exports.encryptField,
+  decryptField: exports.decryptField,
+  extractLast4: exports.extractLast4,
+  validateIBAN: exports.validateIBAN,
+  hashField: exports.hashField,
+  generateToken: exports.generateToken,
+  verifyWebhookSignature: exports.verifyWebhookSignature,
+});
