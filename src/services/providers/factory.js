@@ -1,7 +1,3 @@
-const PaymobProvider = require('./paymob.provider');
-const PaypalProvider = require('./paypal.provider');
-const BankTransferProvider = require('./bankTransfer.provider');
-const CashProvider = require('./cash.provider');
 const logger = require('../../utils/logger');
 
 // ─────────────────────────────────────────────────────────────────
@@ -12,11 +8,12 @@ const logger = require('../../utils/logger');
 
 class ProviderFactory {
   constructor() {
-    this.providers = {
-      paymob: new PaymobProvider(),
-      paypal: new PaypalProvider(),
-      bank_transfer: new BankTransferProvider(),
-      cash: new CashProvider(),
+    this.providers = {};
+    this.providerConstructors = {
+      paymob: () => new (require('./paymob.provider'))(),
+      paypal: () => new (require('./paypal.provider'))(),
+      bank_transfer: () => new (require('./bankTransfer.provider'))(),
+      cash: () => new (require('./cash.provider'))(),
     };
   }
 
@@ -24,10 +21,29 @@ class ProviderFactory {
    * Get provider by method
    */
   getProvider(method) {
+    if (!this.providers[method]) {
+      const createProvider = this.providerConstructors[method];
+      if (!createProvider) {
+        const validMethods = Object.keys(this.providerConstructors);
+        throw new Error(
+          `Unknown payment method: ${method}. Valid methods: ${validMethods.join(', ')}`
+        );
+      }
+
+      try {
+        this.providers[method] = createProvider();
+      } catch (err) {
+        const base = err?.message ? err.message : String(err);
+        throw new Error(
+          `Payment provider '${method}' is not configured or failed to initialize: ${base}`
+        );
+      }
+    }
+
     const provider = this.providers[method];
 
     if (!provider) {
-      const validMethods = Object.keys(this.providers);
+      const validMethods = Object.keys(this.providerConstructors);
       throw new Error(
         `Unknown payment method: ${method}. Valid methods: ${validMethods.join(', ')}`
       );
@@ -41,7 +57,7 @@ class ProviderFactory {
    * List all available providers
    */
   listProviders() {
-    return Object.keys(this.providers);
+    return Object.keys(this.providerConstructors);
   }
 }
 

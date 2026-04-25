@@ -74,6 +74,11 @@ const searchRoutes         = require('./routes/search.routes');
 const reportRoutes         = require('./routes/report.routes');
 const healthRoutes         = require('./routes/health.routes');
 const kycRoutes            = require('./routes/kyc.routes');
+const CLIENT_URL = process.env.CLIENT_URL;
+
+if (!CLIENT_URL) {
+  throw new Error('CLIENT_URL is required in .env');
+}
 
 // ── App Setup ──────────────────────────────────────────────
 const app = express();
@@ -90,7 +95,7 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com', 'blob:'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      connectSrc: ["'self'", process.env.CLIENT_URL || '*'],
+      connectSrc: ["'self'", CLIENT_URL],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
     },
@@ -99,11 +104,15 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
+  origin: CLIENT_URL,
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','X-Request-Id'],
   exposedHeaders: ['X-Request-Id'],
 }));
+
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 if (mongoSanitize) app.use(mongoSanitize());
 if (xssClean) app.use(xssClean());
@@ -112,10 +121,6 @@ if (hpp) app.use(hpp({ whitelist: ['price','bedrooms','bathrooms','area'] }));
 // Rate limiting
 app.use('/api', globalLimiter);
 app.use('/api/v1/auth', authLimiter);
-
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Cookie parsing (must be before routes that use cookies)
 app.use(cookieParser());
@@ -198,6 +203,12 @@ const startServer = async () => {
     initPaymentExpiryJob();  // ← Payment expiry cleanup job
   });
 };
-if (process.env.NODE_ENV !== 'test') startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch((err) => {
+    logger.error('Startup failed:', err.message);
+    logger.error(err.stack);
+    process.exit(1);
+  });
+}
 
 module.exports = { app, io, startServer };

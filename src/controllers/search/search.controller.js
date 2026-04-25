@@ -119,7 +119,7 @@ exports.deleteSavedSearch = asyncHandler(async (req, res, next) => {
 // ─── Property Analytics (Owner) ───────────────────────────────
 exports.getPropertyAnalytics = asyncHandler(async (req, res, next) => {
   const Property = require('../../models/property.model');
-  const prop = await Property.findById(req.params.id);
+  const prop = await Property.findById(req.params.id).lean();
   if (!prop) return next(new AppError('Property not found', 404));
   if (prop.owner.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
     return next(new AppError('You are not authorized', 403));
@@ -132,7 +132,7 @@ exports.getPropertyAnalytics = asyncHandler(async (req, res, next) => {
 
 // ─── Similar Properties ───────────────────────────────────────
 exports.getSimilarProperties = asyncHandler(async (req, res, next) => {
-  const property = await Property.findById(req.params.id).select('type listingType location.city price');
+  const property = await Property.findById(req.params.id).select('type listingType location.city price').lean();
   if (!property) return next(new AppError('العقار غير موجود', 404));
 
   const similar = await Property.find({

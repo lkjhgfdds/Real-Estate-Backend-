@@ -40,6 +40,11 @@ exports.protect = async (req, res, next) => {
       }
     }
 
+    const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+    if (tokenVersion !== user.tokenVersion) {
+      return res.status(401).json({ status: 'fail', message: 'Session is no longer valid, please log in again' });
+    }
+
     req.user = user;
     next();
   } catch (err) {

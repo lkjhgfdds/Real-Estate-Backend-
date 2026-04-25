@@ -92,7 +92,7 @@ exports.getAllAuctions = asyncHandler(async (req, res) => {
 
 // ─── Get Single Auction ───────────────────────────────────────
 exports.getAuction = asyncHandler(async (req, res, next) => {
-  const auction = await Auction.findById(req.params.id)
+  const auction = await Auction.findById(req.params.id).lean()
     .populate('property', 'title location images price area bedrooms bathrooms')
     .populate('seller',   'name email phone')
     .populate('winner',   'name email');

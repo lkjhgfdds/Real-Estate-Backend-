@@ -77,7 +77,7 @@ exports.getMySentInquiries = async (req, res, next) => {
 
 exports.markAsRead = async (req, res, next) => {
   try {
-    const inquiry = await Inquiry.findById(req.params.id);
+    const inquiry = await Inquiry.findById(req.params.id).lean();
     if (!inquiry) return res.status(404).json({ status: 'fail', message: 'Inquiry not found' });
     if (inquiry.receiver.toString() !== req.user._id.toString()) {
       return res.status(403).json({ status: 'fail', message: 'Not authorized' });

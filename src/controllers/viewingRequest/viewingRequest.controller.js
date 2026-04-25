@@ -76,7 +76,7 @@ exports.updateStatus = async (req, res, next) => {
       return res.status(400).json({ status: 'fail', message: 'Status must be approved or rejected' });
     }
 
-    const viewingRequest = await ViewingRequest.findById(req.params.id)
+    const viewingRequest = await ViewingRequest.findById(req.params.id).lean()
       .populate('requester', 'email name').populate('property', 'title');
     if (!viewingRequest) return res.status(404).json({ status: 'fail', message: 'Viewing request not found' });
     if (viewingRequest.owner.toString() !== req.user._id.toString()) {

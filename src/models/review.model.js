@@ -6,11 +6,13 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Property',
       required: [true, 'Property is required'],
+      alias: 'property_id',
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'User is required'],
+      alias: 'user_id',
     },
     rating: {
       type: Number,

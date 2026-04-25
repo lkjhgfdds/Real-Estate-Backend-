@@ -9,7 +9,7 @@ exports.getAllUsers = async (req, res, next) => {
     const skip  = (page - 1) * limit;
 
     const total = await User.countDocuments();
-    const users = await User.find().skip(skip).limit(limit).sort('-createdAt');
+    const users = await User.find().skip(skip).limit(limit).sort('-createdAt').lean();
 
     res.status(200).json({ status: 'success', results: users.length, total, page, pages: Math.ceil(total / limit), data: { users } });
   } catch (err) {
@@ -20,7 +20,7 @@ exports.getAllUsers = async (req, res, next) => {
 // ─── Get Single User (Admin) ──────────────────────────────────
 exports.getUser = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findById(req.params.id).lean();
     if (!user) return res.status(404).json({ status: 'fail', message: 'User not found' });
     res.status(200).json({ status: 'success', data: { user } });
   } catch (err) {
@@ -32,16 +32,16 @@ exports.getUser = async (req, res, next) => {
 // Returns user profile + role-specific dashboard data
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).lean();
     const dashboard = {};
 
     if (user.role === 'owner' || user.role === 'agent') {
       // Owner/Agent dashboard
-      const Property = require('../../models/property.model');
-      const Booking = require('../../models/booking.model');
-      const ViewingRequest = require('../../models/viewingRequest.model');
+      const Property = require('../models/property.model');
+      const Booking = require('../models/booking.model');
+      const ViewingRequest = require('../models/viewingRequest.model');
 
-      const properties = await Property.find({ owner: user._id }).limit(5).select('title price bedrooms bathrooms area photo');
+      const properties = await Property.find({ owner: user._id }).limit(5).select('title price bedrooms bathrooms area photo').lean();
       const totalProperties = await Property.countDocuments({ owner: user._id });
       const activeListings = await Property.countDocuments({ owner: user._id, status: 'active' });
 
@@ -63,13 +63,13 @@ exports.getMe = async (req, res, next) => {
     } 
     else if (user.role === 'buyer') {
       // Buyer dashboard
-      const Favorite = require('../../models/favorite.model');
-      const Booking = require('../../models/booking.model');
-      const ViewingRequest = require('../../models/viewingRequest.model');
+      const Favorite = require('../models/favorite.model');
+      const Booking = require('../models/booking.model');
+      const ViewingRequest = require('../models/viewingRequest.model');
 
       const savedPropertiesCount = await Favorite.countDocuments({ userId: user._id });
-      const myBookings = await Booking.find({ buyer: user._id }).limit(5).select('property status checkInDate checkOutDate');
-      const viewingRequests = await ViewingRequest.find({ userId: user._id }).limit(5).select('property status scheduledDate');
+      const myBookings = await Booking.find({ buyer: user._id }).limit(5).select('property status checkInDate checkOutDate').lean();
+      const viewingRequests = await ViewingRequest.find({ userId: user._id }).limit(5).select('property status scheduledDate').lean();
 
       dashboard.savedPropertiesCount = savedPropertiesCount;
       dashboard.myBookings = myBookings;
@@ -77,8 +77,8 @@ exports.getMe = async (req, res, next) => {
     } 
     else if (user.role === 'admin') {
       // Admin dashboard
-      const Property = require('../../models/property.model');
-      const Booking = require('../../models/booking.model');
+      const Property = require('../models/property.model');
+      const Booking = require('../models/booking.model');
 
       const totalUsers = await User.countDocuments();
       const totalProperties = await Property.countDocuments();
@@ -151,8 +151,8 @@ exports.changePassword = async (req, res, next) => {
 
     // Issue new tokens after password change
     const { signToken, signRefreshToken } = require('../utils/jwt');
-    const accessToken     = signToken(user._id);
-    const newRefreshToken = signRefreshToken(user._id);
+    const accessToken     = signToken(user._id, user.tokenVersion);
+    const newRefreshToken = signRefreshToken(user._id, user.tokenVersion);
 
     await RefreshToken.create({
       userId:    user._id,

@@ -1,6 +1,45 @@
 const BaseProvider = require('./baseProvider');
-const axios = require('axios');
 const logger = require('../../utils/logger');
+
+const readResponseData = async (res) => {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return text;
+  }
+};
+
+const postJson = async (url, body, headers = {}) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  const data = await readResponseData(res);
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+    err.response = { data };
+    throw err;
+  }
+  return { data };
+};
+
+const postForm = async (url, formBody, headers = {}) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
+    body: formBody,
+  });
+  const data = await readResponseData(res);
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+    err.response = { data };
+    throw err;
+  }
+  return { data };
+};
 
 // ─────────────────────────────────────────────────────────────────
 // PayPal Provider
@@ -81,15 +120,12 @@ class PaypalProvider extends BaseProvider {
         },
       };
 
-      const orderResponse = await axios.post(`${this.apiUrl}/checkout/orders`, orderData, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
+      const orderResponse = await postJson(`${this.apiUrl}/checkout/orders`, orderData, {
+        Authorization: `Bearer ${accessToken}`,
       });
 
       const orderId = orderResponse.data.id;
-      const approvalUrl = orderResponse.data.links.find((link) => link.rel === 'approve').href;
+      const approvalUrl = orderResponse.data.links?.find((link) => link.rel === 'approve')?.href;
 
       logger.info(`[PayPal] Order created: ${orderId}`);
 
@@ -163,7 +199,7 @@ class PaypalProvider extends BaseProvider {
       }
 
       // Capture the payment (if not already captured)
-      if (resourcestatus === 'APPROVED') {
+      if (resource.status === 'APPROVED') {
         const captured = await this.captureOrder(resource.id);
         if (captured.status !== 'COMPLETED') {
           return {
@@ -198,16 +234,9 @@ class PaypalProvider extends BaseProvider {
     try {
       const accessToken = await this.getAccessToken();
 
-      const response = await axios.post(
-        `${this.apiUrl}/checkout/orders/${orderId}/capture`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await postJson(`${this.apiUrl}/checkout/orders/${orderId}/capture`, {}, {
+        Authorization: `Bearer ${accessToken}`,
+      });
 
       return response.data;
     } catch (err) {
@@ -225,21 +254,10 @@ class PaypalProvider extends BaseProvider {
 
       const accessToken = await this.getAccessToken();
 
-      const response = await axios.post(
-        `${this.apiUrl}/payments/captures/${transactionId}/refund`,
-        {
-          amount: {
-            value: String(payment.totalAmount),
-            currency_code: payment.currency || 'USD',
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      // Full refund (amount omitted) — PayPal will refund the entire captured amount.
+      const response = await postJson(`${this.apiUrl}/payments/captures/${transactionId}/refund`, {}, {
+        Authorization: `Bearer ${accessToken}`,
+      });
 
       return {
         transactionId: response.data.id,
@@ -257,15 +275,10 @@ class PaypalProvider extends BaseProvider {
     try {
       const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
 
-      const response = await axios.post(
+      const response = await postForm(
         `${this.apiUrl.replace('/v2', '')}/v1/oauth2/token`,
         'grant_type=client_credentials',
-        {
-          headers: {
-            Authorization: `Basic ${auth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-        }
+        { Authorization: `Basic ${auth}` }
       );
 
       return response.data.access_token;

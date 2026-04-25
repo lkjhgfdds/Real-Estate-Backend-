@@ -32,7 +32,7 @@ exports.getAllProperties = asyncHandler(async (req, res) => {
   const features = new APIFeatures(Property.find({ isApproved: true }), req.query)
     .filter().search().sort().limitFields().paginate();
 
-  const properties = await features.query.populate('owner', 'name email phone photo');
+  const properties = await features.query.populate('owner', 'name email phone photo').lean();
   const total = await Property.countDocuments({ ...features.filterQuery, isApproved: true });
 
   res.status(200).json({
@@ -48,7 +48,8 @@ exports.getProperty = async (req, res, next) => {
   try {
     const property = await Property.findById(req.params.id)
       .populate('owner', 'name email phone photo bio')
-      .populate({ path: 'reviews', options: { limit: 5, sort: { createdAt: -1 } }, populate: { path: 'userId', select: 'name photo' } });
+      .populate({ path: 'reviews', options: { limit: 5, sort: { createdAt: -1 } }, populate: { path: 'userId', select: 'name photo' } })
+      .lean();
 
     if (!property) return next(new AppError('Property not found', 404));
 
@@ -66,6 +67,12 @@ exports.getProperty = async (req, res, next) => {
 // ─── Update Property ─────────────────────────────────────────
 exports.updateProperty = async (req, res, next) => {
   try {
+    const propertyToUpdate = await Property.findById(req.params.id);
+    if (!propertyToUpdate) return next(new AppError('Property not found', 404));
+    if (propertyToUpdate.owner.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return next(new AppError('You are not authorized to modify this property', 403));
+    }
+
     const updates = { ...req.body };
     if (req.body.images?.length > 0 && req.query.append === 'true') {
       await Property.findByIdAndUpdate(req.params.id, { $push: { images: { $each: req.body.images } } });
@@ -73,7 +80,6 @@ exports.updateProperty = async (req, res, next) => {
     }
 
     const property = await Property.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-    if (!property) return next(new AppError('Property not found', 404));
 
     clearCache('/api/v1/properties');
     clearCache('/api/v1/search');
@@ -86,6 +92,9 @@ exports.deleteProperty = async (req, res, next) => {
   try {
     const property = await Property.findById(req.params.id);
     if (!property) return next(new AppError('Property not found', 404));
+    if (property.owner.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return next(new AppError('You are not authorized to modify this property', 403));
+    }
 
     for (const url of property.images) {
       try {
@@ -138,7 +147,7 @@ exports.getMyProperties = asyncHandler(async (req, res) => {
 
   const skip  = (page - 1) * limit;
   const total = await Property.countDocuments(filter);
-  const properties = await Property.find(filter).sort('-createdAt').skip(skip).limit(Number(limit));
+  const properties = await Property.find(filter).sort('-createdAt').skip(skip).limit(Number(limit)).lean();
 
   res.status(200).json({ status: 'success', total, page: Number(page), pages: Math.ceil(total/limit), results: properties.length, data: { properties } });
 });

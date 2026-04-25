@@ -74,7 +74,7 @@ exports.getPropertyReviews = async (req, res, next) => {
 // ─── Update Review ────────────────────────────────────────────
 exports.updateReview = async (req, res, next) => {
   try {
-    const review = await Review.findById(req.params.id);
+    const review = await Review.findById(req.params.id).lean();
     if (!review) return res.status(404).json({ status: 'fail', message: 'Review not found' });
     if (review.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ status: 'fail', message: 'Not authorized' });

@@ -1,7 +1,28 @@
 const BaseProvider = require('./baseProvider');
-const axios = require('axios');
 const logger = require('../../utils/logger');
 const encryption = require('../../utils/encryption.utils');
+
+const postJson = async (url, body, headers = {}) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+
+  const text = await res.text();
+  let data = text;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_) {}
+
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+    err.response = { data };
+    throw err;
+  }
+
+  return { data };
+};
 
 // ─────────────────────────────────────────────────────────────────
 // Paymob Provider (Egyptian Payment Gateway)
@@ -62,7 +83,7 @@ class PaymobProvider extends BaseProvider {
         },
       };
 
-      const orderResponse = await axios.post(`${this.apiUrl}/ecommerce/orders`, orderData);
+      const orderResponse = await postJson(`${this.apiUrl}/ecommerce/orders`, orderData);
       const orderId = orderResponse.data.id;
 
       logger.info(`[Paymob] Order created: ${orderId}`);
@@ -90,10 +111,7 @@ class PaymobProvider extends BaseProvider {
         integration_id: this.integrationId,
       };
 
-      const paymentKeyResponse = await axios.post(
-        `${this.apiUrl}/acceptance/payment_keys`,
-        paymentKeyData
-      );
+      const paymentKeyResponse = await postJson(`${this.apiUrl}/acceptance/payment_keys`, paymentKeyData);
 
       const paymentKey = paymentKeyResponse.data.token;
 
@@ -180,7 +198,7 @@ class PaymobProvider extends BaseProvider {
    */
   async getAuthToken() {
     try {
-      const response = await axios.post(`${this.apiUrl}/auth/tokens`, {
+      const response = await postJson(`${this.apiUrl}/auth/tokens`, {
         api_key: this.apiKey,
       });
 
@@ -200,13 +218,10 @@ class PaymobProvider extends BaseProvider {
 
       const authToken = await this.getAuthToken();
 
-      const response = await axios.post(
-        `${this.apiUrl}/acceptance/void_refund/refund`,
-        {
-          auth_token: authToken,
-          transaction_id: transactionId,
-        }
-      );
+      const response = await postJson(`${this.apiUrl}/acceptance/void_refund/refund`, {
+        auth_token: authToken,
+        transaction_id: transactionId,
+      });
 
       return {
         transactionId: response.data.id,

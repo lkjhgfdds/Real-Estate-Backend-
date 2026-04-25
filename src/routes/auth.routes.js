@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth/auth.controller');
+const userController = require('../controllers/user.controller');
 const { protect } = require('../middlewares/auth.middleware');
 const restrictTo = require('../middlewares/restrictTo.middleware');
 const validate = require('../middlewares/validation.middleware');
@@ -117,7 +118,7 @@ router.post('/login', validate(loginSchema), authController.login);
  *         description: Current user data
  *       401: { $ref: '#/components/responses/401' }
  */
-router.get('/me', protect, authController.getMe);
+router.get('/me', protect, userController.getMe);
 
 /**
  * @swagger

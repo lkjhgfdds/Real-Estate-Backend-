@@ -9,16 +9,23 @@ const logger = require('./logger');
 // ─────────────────────────────────────────────────────────────────
 
 const ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+let DERIVED_KEY = null;
 
-// Validate encryption key on startup
-if (!ENCRYPTION_KEY) {
-  logger.error('[Encryption] ENCRYPTION_KEY not set in .env');
-  throw new Error('ENCRYPTION_KEY environment variable is required');
-}
+const getDerivedKey = () => {
+  if (DERIVED_KEY) return DERIVED_KEY;
 
-// Derive key from password using scrypt (like password hashing)
-const KEY = crypto.scryptSync(ENCRYPTION_KEY, 'payment-system', 32);
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    // Don't crash the server at require-time — only fail when encryption is actually used.
+    logger.error('[Encryption] ENCRYPTION_KEY not set in .env');
+    const err = new Error('ENCRYPTION_KEY environment variable is required for encryption');
+    err.code = 'ENCRYPTION_KEY_MISSING';
+    throw err;
+  }
+
+  DERIVED_KEY = crypto.scryptSync(encryptionKey, 'payment-system', 32);
+  return DERIVED_KEY;
+};
 
 /**
  * Encrypt a sensitive field (e.g., IBAN)
@@ -32,7 +39,7 @@ exports.encryptField = (value) => {
     const iv = crypto.randomBytes(16);
 
     // Create cipher
-    const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+    const cipher = crypto.createCipheriv(ALGORITHM, getDerivedKey(), iv);
 
     // Encrypt the value
     let encrypted = cipher.update(String(value), 'utf8', 'hex');
@@ -63,7 +70,7 @@ exports.decryptField = (encryptedData) => {
     const { encrypted, iv, authTag } = encryptedData;
 
     // Recreate decipher
-    const decipher = crypto.createDecipheriv(ALGORITHM, KEY, Buffer.from(iv, 'hex'));
+    const decipher = crypto.createDecipheriv(ALGORITHM, getDerivedKey(), Buffer.from(iv, 'hex'));
 
     // Set auth tag (verify not tampered)
     decipher.setAuthTag(Buffer.from(authTag, 'hex'));

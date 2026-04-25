@@ -189,7 +189,7 @@ exports.rejectBooking = async (req, res, next) => {
 // ─── Get Single Booking ──────────────────────────────────────
 exports.getBooking = async (req, res, next) => {
   try {
-    const booking = await Booking.findById(req.params.id)
+    const booking = await Booking.findById(req.params.id).lean()
       .populate('property_id', 'title price location images owner')
       .populate('user_id',     'name email phone');
 

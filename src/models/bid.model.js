@@ -38,5 +38,6 @@ const bidSchema = new mongoose.Schema(
 bidSchema.index({ auction: 1, amount: -1 });   // Required index — descending sort
 bidSchema.index({ auction: 1, isWinning: 1 }); // Fetch winning bid quickly
 bidSchema.index({ bidder: 1 });                // Fetch bids for specific user
+bidSchema.index({ auction: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Bid', bidSchema);

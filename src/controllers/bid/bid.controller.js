@@ -1,5 +1,6 @@
 const Bid      = require('../../models/bid.model');
 const Auction  = require('../../models/auction.model');
+const mongoose = require('mongoose');
 const asyncHandler = require('../../utils/asyncHandler');
 const AppError     = require('../../utils/AppError');
 const { emitNewBid } = require('../../config/socket');
@@ -15,38 +16,62 @@ exports.placeBid = asyncHandler(async (req, res, next) => {
     return next(new AppError('Bid amount must be a positive number', 400));
   }
 
-  const auction = await Auction.findById(auctionId);
-  if (!auction) return next(new AppError('Auction not found', 404));
+  const session = await mongoose.startSession();
+  let populatedBid;
+  let auction;
+  try {
+    session.startTransaction();
 
-  const now = new Date();
-  if (auction.status !== 'active' || now < auction.startDate || now > auction.endDate) {
-    return next(new AppError('Auction is not active or has ended', 400));
+    auction = await Auction.findById(auctionId).session(session);
+    if (!auction) throw new AppError('Auction not found', 404);
+
+    const now = new Date();
+    if (auction.status !== 'active' || now < auction.startDate || now > auction.endDate) {
+      throw new AppError('Auction is not active or has ended', 400);
+    }
+
+    // FIX — Check that the bidder account is active
+    if (!req.user.isActive || req.user.isBanned) {
+      throw new AppError('Your account is suspended and you cannot bid', 403);
+    }
+
+    const minimumBid = (auction.currentBid || auction.startingPrice) + auction.bidIncrement;
+    if (amount < minimumBid) {
+      throw new AppError(
+        `Bid amount must be at least ${minimumBid} (current: ${auction.currentBid}, increment: ${auction.bidIncrement})`,
+        400
+      );
+    }
+
+    if (auction.seller.toString() === bidderId.toString()) {
+      throw new AppError('You cannot bid on your own auction', 403);
+    }
+
+    await Bid.updateMany(
+      { auction: auctionId, isWinning: true },
+      { isWinning: false },
+      { session }
+    );
+
+    const [newBid] = await Bid.create(
+      [{ auction: auctionId, bidder: bidderId, amount, isWinning: true }],
+      { session }
+    );
+
+    await Auction.findByIdAndUpdate(
+      auctionId,
+      { currentBid: amount },
+      { session, new: true }
+    );
+
+    await session.commitTransaction();
+    populatedBid = await newBid.populate('bidder', 'name email');
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
   }
-
-  // FIX — Check that the bidder account is active
-  if (!req.user.isActive || req.user.isBanned) {
-    return next(new AppError('Your account is suspended and you cannot bid', 403));
-  }
-
-  const minimumBid = (auction.currentBid || auction.startingPrice) + auction.bidIncrement;
-  if (amount < minimumBid) {
-    return next(new AppError(
-      `Bid amount must be at least ${minimumBid} (current: ${auction.currentBid}, increment: ${auction.bidIncrement})`,
-      400
-    ));
-  }
-
-  if (auction.seller.toString() === bidderId.toString()) {
-    return next(new AppError('You cannot bid on your own auction', 403));
-  }
-
-  // Cancel the old winner and create a new one
-  await Bid.updateMany({ auction: auctionId, isWinning: true }, { isWinning: false });
-
-  const newBid = await Bid.create({ auction: auctionId, bidder: bidderId, amount, isWinning: true });
-  await Auction.findByIdAndUpdate(auctionId, { currentBid: amount });
-
-  const populatedBid = await newBid.populate('bidder', 'name email');
 
   emitNewBid(auctionId, {
     _id:       populatedBid._id,

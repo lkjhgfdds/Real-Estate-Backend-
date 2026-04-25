@@ -6,7 +6,7 @@ module.exports = {
   testTimeout:         30000,
   collectCoverageFrom: ['src/**/*.js', '!src/docs/**'],
   coverageDirectory:   'coverage',
-  coverageThreshold:   { global: { branches: 50, functions: 50, lines: 50 } },
+  coverageThreshold:   { global: { branches: 70, functions: 80, lines: 80 } },
   forceExit:           true,
   detectOpenHandles:   true,
 };

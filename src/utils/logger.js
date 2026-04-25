@@ -40,24 +40,33 @@ if (process.env.NODE_ENV !== 'production') {
   transports.push(new winston.transports.Console({ format: consoleFormat }));
 }
 
+const exceptionHandlers = [
+  new winston.transports.DailyRotateFile({
+    filename: path.join(logDir, 'exceptions-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    maxFiles: '30d',
+  }),
+];
+
+const rejectionHandlers = [
+  new winston.transports.DailyRotateFile({
+    filename: path.join(logDir, 'rejections-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    maxFiles: '30d',
+  }),
+];
+
+if (process.env.NODE_ENV !== 'production') {
+  exceptionHandlers.push(new winston.transports.Console({ format: consoleFormat }));
+  rejectionHandlers.push(new winston.transports.Console({ format: consoleFormat }));
+}
+
 const logger = winston.createLogger({
   level:      process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'warn' : 'debug'),
   format:     formats,
   transports,
-  exceptionHandlers: [
-    new winston.transports.DailyRotateFile({
-      filename: path.join(logDir, 'exceptions-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxFiles: '30d',
-    }),
-  ],
-  rejectionHandlers: [
-    new winston.transports.DailyRotateFile({
-      filename: path.join(logDir, 'rejections-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxFiles: '30d',
-    }),
-  ],
+  exceptionHandlers,
+  rejectionHandlers,
 });
 
 module.exports = logger;

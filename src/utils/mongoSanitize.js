@@ -23,7 +23,7 @@ function sanitizeObject(obj) {
   if (typeof obj !== 'object' || obj === null) return obj;
   const clean = {};
   for (const key of Object.keys(obj)) {
-    const cleanKey = key.replace(/^\$/, '').replace(/\./, '_');
+    const cleanKey = key.replace(/^\$/, '').replace(/\./g, '_');
     if (typeof obj[key] === 'object') {
       clean[cleanKey] = sanitizeObject(obj[key]);
     } else {

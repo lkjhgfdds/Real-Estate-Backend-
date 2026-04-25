@@ -6,7 +6,7 @@ exports.registerSchema = [
   body('email').notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email address').normalizeEmail(),
   body('password').notEmpty().withMessage('Password is required')
-    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('phone').optional()
     .matches(/^[0-9+\-\s]{7,15}$/).withMessage('Invalid phone number'),
   // ✅ SECURITY FIX: Role NOT accepted during registration
@@ -28,7 +28,7 @@ exports.updateUserRoleSchema = [
 exports.changePasswordSchema = [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
   body('newPassword').notEmpty().withMessage('New password is required')
-    .isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
+    .isLength({ min: 8 }).withMessage('New password must be at least 8 characters')
     .custom((val, { req }) => {
       if (val === req.body.currentPassword) throw new Error('New password must be different from current password');
       return true;

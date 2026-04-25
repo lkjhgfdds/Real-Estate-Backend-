@@ -10,11 +10,13 @@ const bookingSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+      alias: 'userId',
     },
     property_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Property',
       required: true,
+      alias: 'propertyId',
     },
     amount: {
       type: Number,
@@ -23,10 +25,12 @@ const bookingSchema = new mongoose.Schema(
     start_date: {
       type: Date,
       required: true,
+      alias: 'startDate',
     },
     end_date: {
       type: Date,
       required: true,
+      alias: 'endDate',
     },
     // FIX — One enum instead of 3 confusing booleans
     status: {
@@ -58,5 +62,7 @@ const bookingSchema = new mongoose.Schema(
 
 bookingSchema.index({ property_id: 1, start_date: 1, end_date: 1 });
 bookingSchema.index({ user_id: 1 });
+bookingSchema.index({ user_id: 1, created_at: -1 });
+bookingSchema.index({ property_id: 1, status: 1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

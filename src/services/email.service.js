@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const logger = require('../utils/logger');
 
 const transporter = nodemailer.createTransport({
   host:   process.env.EMAIL_HOST,
@@ -12,19 +13,19 @@ const transporter = nodemailer.createTransport({
 
 const sendEmail = async ({ to, subject, html }) => {
   try {
-    console.log(`[Email] Attempting to send email to: ${to}`);
-    console.log(`[Email] SMTP Config: ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}`);
+    logger.info(`[Email] Attempting to send email to: ${to}`);
+    logger.info(`[Email] SMTP Config: ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}`);
     const result = await transporter.sendMail({
       from: `"Real Estate Platform" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
     });
-    console.log(`[Email] ✅ Email sent successfully. Message ID: ${result.messageId}`);
+    logger.info(`[Email] ✅ Email sent successfully. Message ID: ${result.messageId}`);
     return result;
   } catch (error) {
-    console.error(`[Email] ❌ Failed to send email: ${error.message}`);
-    console.error(`[Email] Error code: ${error.code}`);
+    logger.error(`[Email] ❌ Failed to send email: ${error.message}`);
+    logger.error(`[Email] Error code: ${error.code}`);
     throw error;
   }
 };
@@ -127,3 +128,5 @@ exports.sendViewingResponseEmail = async (email, { status, propertyTitle, prefer
     `,
   });
 };
+
+

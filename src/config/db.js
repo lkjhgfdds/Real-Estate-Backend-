@@ -11,8 +11,14 @@ const connectDB = async () => {
     });
     logger.info(` MongoDB Atlas Connected: ${conn.connection.host}`);
   } catch (err) {
+    // Ensure the error is visible even if the logger doesn't flush before exit.
+    try {
+      // Avoid printing the full URI (may contain credentials); message is enough.
+      console.error(`MongoDB Connection Error: ${err.message}`);
+    } catch (_) {}
+
     logger.error(` MongoDB Connection Error: ${err.message}`);
-    process.exit(1);
+    throw err;
   }
 };
 

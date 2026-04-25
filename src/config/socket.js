@@ -22,7 +22,7 @@ module.exports = (httpServer) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('Authentication error: No token'));
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       
       // FIX — Use Redis cache to check isBanned status (TTL: 10 seconds)
       const cacheKey = `banned:${decoded.id}`;

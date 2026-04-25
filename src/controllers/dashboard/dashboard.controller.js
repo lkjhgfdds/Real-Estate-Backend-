@@ -85,7 +85,7 @@ exports.changeUserRole = async (req, res, next) => {
     if (!validRoles.includes(role)) {
       return res.status(400).json({ status: 'fail', message: `Role must be: ${validRoles.join(', ')}` });
     }
-    const user = await User.findById(req.params.id);
+    const user = await User.findById(req.params.id).lean();
     if (!user) return res.status(404).json({ status: 'fail', message: 'User not found' });
     user.role = role;
     await user.save();
@@ -99,7 +99,7 @@ exports.changeUserRole = async (req, res, next) => {
 // FIX — Use isBanned that now exists in the schema
 exports.toggleBanUser = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findById(req.params.id).lean();
     if (!user) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
     user.isBanned = !user.isBanned;
     await user.save();
@@ -112,7 +112,7 @@ exports.toggleBanUser = async (req, res, next) => {
 // @route PATCH /api/v1/dashboard/admin/properties/:id/approve
 exports.approveProperty = async (req, res, next) => {
   try {
-    const property = await Property.findById(req.params.id);
+    const property = await Property.findById(req.params.id).lean();
     if (!property) return res.status(404).json({ status: 'fail', message: 'العقار غير موجود' });
     property.isApproved = true;
     await property.save();
@@ -125,7 +125,7 @@ exports.approveProperty = async (req, res, next) => {
 // @route PATCH /api/v1/dashboard/admin/properties/:id/reject
 exports.rejectProperty = async (req, res, next) => {
   try {
-    const property = await Property.findById(req.params.id);
+    const property = await Property.findById(req.params.id).lean();
     if (!property) return res.status(404).json({ status: 'fail', message: 'العقار غير موجود' });
     property.isApproved = false;
     await property.save();
@@ -138,7 +138,7 @@ exports.rejectProperty = async (req, res, next) => {
 // @route PATCH /api/v1/dashboard/admin/auctions/:id/approve
 exports.approveAuction = async (req, res, next) => {
   try {
-    const auction = await Auction.findById(req.params.id);
+    const auction = await Auction.findById(req.params.id).lean();
     if (!auction) return res.status(404).json({ status: 'fail', message: 'المزاد غير موجود' });
     auction.isApproved = true;
     // FIX — لا نغير status هنا، الـ cron job يتولى ذلك
@@ -178,7 +178,7 @@ exports.deleteReview = async (req, res, next) => {
   try {
     // FIX — استخدام deleteOne() بدل findByIdAndDelete() حتى يُطلق الـ post('deleteOne') hook
     // الذي يستدعي calcAverageRatings تلقائياً لإعادة حساب avgRating على العقار
-    const review = await Review.findById(req.params.id);
+    const review = await Review.findById(req.params.id).lean();
     if (!review) return res.status(404).json({ status: 'fail', message: 'التقييم غير موجود' });
     await review.deleteOne();
     res.status(200).json({ status: 'success', message: 'تم حذف التقييم' });

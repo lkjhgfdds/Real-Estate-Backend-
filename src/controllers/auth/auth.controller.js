@@ -34,12 +34,12 @@ exports.register = async (req, res, next) => {
     // Send OTP via email
     try {
       await sendVerificationEmail(user.email, otp);
-      console.log(`[Email]  OTP sent to ${user.email}`);
+      logger.info(`[Email]  OTP sent to ${user.email}`);
     } catch (emailError) {
-      console.error(`[Email] ❌ Failed to send OTP to ${user.email}`);
-      console.error(`[Email] Error message: ${emailError.message}`);
-      console.error(`[Email] Error code: ${emailError.code}`);
-      console.error(`[Email] Full error:`, emailError);
+      logger.error(`[Email] ❌ Failed to send OTP to ${user.email}`);
+      logger.error(`[Email] Error message: ${emailError.message}`);
+      logger.error(`[Email] Error code: ${emailError.code}`);
+      logger.error(`[Email] Full error:`, emailError);
     }
 
     // Remove password from response
@@ -148,7 +148,7 @@ exports.resendOTP = async (req, res, next) => {
       logger.warn(`[ResendOTP] Email send failed: ${e.message}`)
     );
 
-    res.status(200).json({ status: 'success', message: 'OTP resent successfully', rawOTP: otp });
+    res.status(200).json({ status: 'success', message: 'OTP resent successfully' });
   } catch (err) {
     next(err);
   }
@@ -182,8 +182,8 @@ exports.login = async (req, res, next) => {
     user.lockUntil = undefined;
     await user.save({ validateBeforeSave: false });
 
-    const accessToken  = signToken(user._id);
-    const refreshToken = signRefreshToken(user._id);
+    const accessToken  = signToken(user._id, user.tokenVersion);
+    const refreshToken = signRefreshToken(user._id, user.tokenVersion);
 
     await RefreshToken.create({
       userId:    user._id,
@@ -234,8 +234,8 @@ exports.refreshToken = async (req, res, next) => {
     // Revoke old token (token rotation)
     await RefreshToken.findByIdAndUpdate(storedToken._id, { isRevoked: true });
 
-    const newAccessToken  = signToken(user._id);
-    const newRefreshToken = signRefreshToken(user._id);
+    const newAccessToken  = signToken(user._id, user.tokenVersion);
+    const newRefreshToken = signRefreshToken(user._id, user.tokenVersion);
 
     await RefreshToken.create({
       userId:    user._id,
@@ -311,9 +311,9 @@ exports.forgotPassword = async (req, res, next) => {
 
     try {
       await sendPasswordResetEmail(user.email, resetToken);
-      console.log(`[Password Reset] Email sent to ${user.email}`);
+      logger.info(`[Password Reset] Email sent to ${user.email}`);
     } catch (emailError) {
-      console.error(`[Password Reset] Failed to send email: ${emailError.message}`);
+      logger.error(`[Password Reset] Failed to send email: ${emailError.message}`);
       user.passwordResetToken = undefined;
       user.passwordResetExpiry = undefined;
       await user.save({ validateBeforeSave: false });
@@ -352,8 +352,8 @@ exports.resetPassword = async (req, res, next) => {
     // Revoke all old refresh tokens after password reset
     await RefreshToken.updateMany({ userId: user._id }, { isRevoked: true });
 
-    const newToken = signToken(user._id);
-    const newRefreshToken = signRefreshToken(user._id);
+    const newToken = signToken(user._id, user.tokenVersion);
+    const newRefreshToken = signRefreshToken(user._id, user.tokenVersion);
 
     await RefreshToken.create({
       userId: user._id,
@@ -382,3 +382,5 @@ exports.resetPassword = async (req, res, next) => {
 
 // NOTE: getMe endpoint moved to user.controller.js for better organization
 // See src/controllers/user.controller.js
+
+

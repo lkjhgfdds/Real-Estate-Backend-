@@ -6,11 +6,13 @@ const favoriteSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+      alias: 'userId',
     },
     property_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Property',
       required: true,
+      alias: 'propertyId',
     },
   },
   {

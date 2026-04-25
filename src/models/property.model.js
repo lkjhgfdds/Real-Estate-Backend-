@@ -75,6 +75,8 @@ propertySchema.index({ listingType: 1 });
 propertySchema.index({ 'location.city': 1 });
 propertySchema.index({ owner: 1 });
 propertySchema.index({ status: 1 });
+propertySchema.index({ isApproved: 1, status: 1 });
+propertySchema.index({ owner: 1, createdAt: -1 });
 
 // FIX — إضافة Text Index للبحث الكفء بدل $regex البطيء
 propertySchema.index(
