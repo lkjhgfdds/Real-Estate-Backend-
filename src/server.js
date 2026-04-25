@@ -105,6 +105,7 @@ app.use(helmet({
 
 app.use(cors({
   origin: CLIENT_URL,
+  credentials: true,
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','X-Request-Id'],
   exposedHeaders: ['X-Request-Id'],
