@@ -55,7 +55,8 @@ const { globalLimiter, authLimiter } = require('./middlewares/advancedRateLimit.
 // ── Jobs ────────────────────────────────────────────────────
 const { initAuctionJob }     = require('./jobs/auction.job');
 const { initSavedSearchJob } = require('./jobs/savedSearch.job');
-const { initBookingJob }     = require('./jobs/booking.job');const initPaymentExpiryJob   = require('./jobs/payment-expiry.job');
+const { initBookingJob }     = require('./jobs/booking.job');
+const initPaymentExpiryJob   = require('./jobs/payment-expiry.job');
 // ── Routes ──────────────────────────────────────────────────
 const authRoutes           = require('./routes/auth.routes');
 const userRoutes           = require('./routes/user.routes');
@@ -119,9 +120,11 @@ if (mongoSanitize) app.use(mongoSanitize());
 if (xssClean) app.use(xssClean());
 if (hpp) app.use(hpp({ whitelist: ['price','bedrooms','bathrooms','area'] }));
 
-// Rate limiting
-app.use('/api', globalLimiter);
-app.use('/api/v1/auth', authLimiter);
+// Rate limiting (disabled in tests to allow fast test execution without lockouts)
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api', globalLimiter);
+  app.use('/api/v1/auth', authLimiter);
+}
 
 // Cookie parsing (must be before routes that use cookies)
 app.use(cookieParser());
@@ -159,7 +162,7 @@ app.use(`${API}/reports`, reportRoutes);
 app.get('/', (req, res) => res.json({
   status: 'success',
   message: ' Real Estate Pro API',
-  version: '3.0.0',
+  version: '4.0.0',
   docs: `${req.protocol}://${req.get('host')}/api/docs`,
   health: `${req.protocol}://${req.get('host')}/api/health`,
 }));

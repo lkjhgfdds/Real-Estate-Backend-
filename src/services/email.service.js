@@ -12,6 +12,10 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendEmail = async ({ to, subject, html }) => {
+  if (process.env.NODE_ENV === 'test') {
+    logger.info(`[Email] Test environment: Skipping actual email to ${to}`);
+    return { messageId: 'test-message-id' };
+  }
   try {
     logger.info(`[Email] Attempting to send email to: ${to}`);
     logger.info(`[Email] SMTP Config: ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}`);

@@ -1,6 +1,9 @@
 const User = require('../models/user.model');
 const RefreshToken = require('../models/refreshToken.model');
 
+// Fields that must never be returned to any client — not even admins
+const SAFE_USER_PROJECTION = '-bankAccounts.ibanEncrypted -loginAttempts -lockUntil -__v';
+
 // ─── Get All Users (Admin) ────────────────────────────────────
 exports.getAllUsers = async (req, res, next) => {
   try {
@@ -8,10 +11,24 @@ exports.getAllUsers = async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip  = (page - 1) * limit;
 
-    const total = await User.countDocuments();
-    const users = await User.find().skip(skip).limit(limit).sort('-createdAt').lean();
+    const [total, users] = await Promise.all([
+      User.countDocuments(),
+      User.find()
+        .select(SAFE_USER_PROJECTION)
+        .skip(skip)
+        .limit(limit)
+        .sort('-createdAt')
+        .lean(),
+    ]);
 
-    res.status(200).json({ status: 'success', results: users.length, total, page, pages: Math.ceil(total / limit), data: { users } });
+    res.status(200).json({
+      status:  'success',
+      results: users.length,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      data:  { users },
+    });
   } catch (err) {
     next(err);
   }
@@ -20,7 +37,9 @@ exports.getAllUsers = async (req, res, next) => {
 // ─── Get Single User (Admin) ──────────────────────────────────
 exports.getUser = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).lean();
+    const user = await User.findById(req.params.id)
+      .select(SAFE_USER_PROJECTION)
+      .lean();
     if (!user) return res.status(404).json({ status: 'fail', message: 'User not found' });
     res.status(200).json({ status: 'success', data: { user } });
   } catch (err) {
@@ -29,83 +48,96 @@ exports.getUser = async (req, res, next) => {
 };
 
 // ─── Get My Profile with Real Estate Dashboard ────────────────────
-// Returns user profile + role-specific dashboard data
+// Returns user profile + role-specific dashboard data.
+// All independent queries within each branch run in parallel (Promise.all).
 exports.getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).lean();
     const dashboard = {};
 
     if (user.role === 'owner' || user.role === 'agent') {
-      // Owner/Agent dashboard
-      const Property = require('../models/property.model');
-      const Booking = require('../models/booking.model');
+      // ── Owner / Agent dashboard ──────────────────────────────
+      const Property      = require('../models/property.model');
+      const Booking       = require('../models/booking.model');
       const ViewingRequest = require('../models/viewingRequest.model');
 
-      const properties = await Property.find({ owner: user._id }).limit(5).select('title price bedrooms bathrooms area photo').lean();
-      const totalProperties = await Property.countDocuments({ owner: user._id });
-      const activeListings = await Property.countDocuments({ owner: user._id, status: 'active' });
+      const [properties, totalProperties, activeListings] = await Promise.all([
+        Property.find({ owner: user._id })
+          .limit(5)
+          .select('title price bedrooms bathrooms area photo')
+          .lean(),
+        Property.countDocuments({ owner: user._id }),
+        Property.countDocuments({ owner: user._id, status: 'available' }),
+      ]);
 
       const propertyIds = properties.map(p => p._id);
-      const bookingRequests = await Booking.countDocuments({ 
-        property: { $in: propertyIds }, 
-        status: 'pending' 
-      });
-      const upcomingViewings = await ViewingRequest.countDocuments({ 
-        property: { $in: propertyIds }, 
-        status: 'pending' 
-      });
 
-      dashboard.properties = properties;
+      const [bookingRequests, upcomingViewings] = await Promise.all([
+        Booking.countDocuments({ property: { $in: propertyIds }, status: 'pending' }),
+        ViewingRequest.countDocuments({ property: { $in: propertyIds }, status: 'pending' }),
+      ]);
+
+      dashboard.properties      = properties;
       dashboard.totalProperties = totalProperties;
-      dashboard.activeListings = activeListings;
+      dashboard.activeListings  = activeListings;
       dashboard.bookingRequests = bookingRequests;
       dashboard.upcomingViewings = upcomingViewings;
-    } 
-    else if (user.role === 'buyer') {
-      // Buyer dashboard
-      const Favorite = require('../models/favorite.model');
-      const Booking = require('../models/booking.model');
+
+    } else if (user.role === 'buyer') {
+      // ── Buyer dashboard ──────────────────────────────────────
+      const Favorite      = require('../models/favorite.model');
+      const Booking       = require('../models/booking.model');
       const ViewingRequest = require('../models/viewingRequest.model');
 
-      const savedPropertiesCount = await Favorite.countDocuments({ userId: user._id });
-      const myBookings = await Booking.find({ buyer: user._id }).limit(5).select('property status checkInDate checkOutDate').lean();
-      const viewingRequests = await ViewingRequest.find({ userId: user._id }).limit(5).select('property status scheduledDate').lean();
+      const [savedPropertiesCount, myBookings, viewingRequests] = await Promise.all([
+        Favorite.countDocuments({ userId: user._id }),
+        Booking.find({ buyer: user._id })
+          .limit(5)
+          .select('property status checkInDate checkOutDate')
+          .lean(),
+        ViewingRequest.find({ userId: user._id })
+          .limit(5)
+          .select('property status scheduledDate')
+          .lean(),
+      ]);
 
       dashboard.savedPropertiesCount = savedPropertiesCount;
-      dashboard.myBookings = myBookings;
-      dashboard.viewingRequests = viewingRequests;
-    } 
-    else if (user.role === 'admin') {
-      // Admin dashboard
+      dashboard.myBookings           = myBookings;
+      dashboard.viewingRequests      = viewingRequests;
+
+    } else if (user.role === 'admin') {
+      // ── Admin dashboard ──────────────────────────────────────
       const Property = require('../models/property.model');
-      const Booking = require('../models/booking.model');
+      const Booking  = require('../models/booking.model');
 
-      const totalUsers = await User.countDocuments();
-      const totalProperties = await Property.countDocuments();
-      const totalBookings = await Booking.countDocuments();
-      const pendingVerifications = await User.countDocuments({ isVerified: false });
+      const [totalUsers, totalProperties, totalBookings, pendingVerifications] = await Promise.all([
+        User.countDocuments(),
+        Property.countDocuments(),
+        Booking.countDocuments(),
+        User.countDocuments({ isVerified: false }),
+      ]);
 
-      dashboard.totalUsers = totalUsers;
-      dashboard.totalProperties = totalProperties;
-      dashboard.totalBookings = totalBookings;
+      dashboard.totalUsers           = totalUsers;
+      dashboard.totalProperties      = totalProperties;
+      dashboard.totalBookings        = totalBookings;
       dashboard.pendingVerifications = pendingVerifications;
     }
 
-    res.status(200).json({ 
-      status: 'success', 
-      data: { 
+    res.status(200).json({
+      status: 'success',
+      data: {
         user,
         dashboard: {
-          role: user.role,
-          isVerified: user.isVerified,
-          kycStatus: user.kycStatus,
-          kycApproved: user.kycStatus === 'approved',
-          kycRejected: user.kycStatus === 'rejected',
-          kycPending: user.kycStatus === 'pending',
+          role:               user.role,
+          isVerified:         user.isVerified,
+          kycStatus:          user.kycStatus,
+          kycApproved:        user.kycStatus === 'approved',
+          kycRejected:        user.kycStatus === 'rejected',
+          kycPending:         user.kycStatus === 'pending',
           kycRejectionReason: user.kycRejectionReason || null,
-          ...dashboard
-        }
-      } 
+          ...dashboard,
+        },
+      },
     });
   } catch (err) {
     next(err);
@@ -117,7 +149,6 @@ exports.updateMe = async (req, res, next) => {
   try {
     const { password, role, ...updateData } = req.body;
 
-    // FIX #5 — Use req.body.photo (Cloudinary URL) instead of req.file.filename
     if (req.body.photo) {
       updateData.photo = req.body.photo;
     }
@@ -139,7 +170,11 @@ exports.changePassword = async (req, res, next) => {
     const { currentPassword, newPassword } = req.body;
 
     const user = await User.findById(req.user._id).select('+password');
-    if (!user.comparePassword(currentPassword)) {
+
+    // FIX: comparePassword is async (bcrypt.compare) — must be awaited.
+    // Without await this was always truthy (a Promise object), accepting any password.
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
       return res.status(400).json({ status: 'fail', message: 'Current password is incorrect' });
     }
 
@@ -162,13 +197,12 @@ exports.changePassword = async (req, res, next) => {
       ip:        req.ip || '',
     });
 
-    // Set HTTP-only cookie with new refresh token
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure:   process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/',
+      maxAge:   30 * 24 * 60 * 60 * 1000,
+      path:     '/',
     });
 
     res.status(200).json({
@@ -184,16 +218,15 @@ exports.changePassword = async (req, res, next) => {
 // ─── Delete User (Admin) ──────────────────────────────────────
 exports.deleteUser = async (req, res, next) => {
   try {
-    // FIX — Verify user exists before deletion
     const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ status: 'fail', message: 'User not found' });
     }
 
-    // Revoke all user tokens
+    // Revoke all user tokens before deletion
     await RefreshToken.deleteMany({ userId: user._id });
-
     await user.deleteOne();
+
     res.status(204).json({ status: 'success', data: null });
   } catch (err) {
     next(err);

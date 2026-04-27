@@ -45,15 +45,10 @@ beforeAll(async () => {
   buyerId    = buyer.user._id;
 });
 
-// ── afterAll: explicit cleanup (setup.js also cleans afterEach, but
-//    comprehensive suite uses beforeAll so we clean manually at the end)
-afterAll(async () => {
-  await User.deleteMany({});
-  await Property.deleteMany({});
-  await Booking.deleteMany({});
-  await Auction.deleteMany({});
-  await Review.deleteMany({});
-});
+// NOTE: No afterAll cleanup needed here.
+// setup.js's afterAll (via setupFilesAfterEnv) runs first in FIFO order,
+// disconnecting Mongoose and stopping the MongoMemoryServer — which wipes
+// all data. Any manual deleteMany() here would hit a closed connection.
 
 // ════════════════════════════════════════════════════════════
 // AUTH TESTS

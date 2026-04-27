@@ -11,7 +11,7 @@ const request = require('supertest');
 const { app } = require('../src/server');
 const User = require('../src/models/user.model');
 const mongoose = require('mongoose');
-const { createVerifiedUser } = require('./setup'); // helper to create verified users
+// global.createVerifiedUser is available automatically
 
 describe('Auth Routes', () => {
 
@@ -20,10 +20,7 @@ describe('Auth Routes', () => {
     await User.deleteMany({});
   });
 
-  // Close DB connection after all tests
-  afterAll(async () => {
-    await mongoose.connection.close();
-  });
+  // NOTE: Connection lifecycle managed by setup.js (setupFilesAfterEnv).
 
   // ── Registration ──────────────────────────────────────────────
   describe('POST /api/v1/auth/register', () => {
@@ -41,7 +38,7 @@ describe('Auth Routes', () => {
     it('should always assign "buyer" role (ignores role in payload)', async () => {
       const res = await request(app)
         .post('/api/v1/auth/register')
-        .send({ name: 'Hacker', email: 'hacker@example.com', password: 'pass123', role: 'admin' });
+        .send({ name: 'Hacker', email: 'hacker@example.com', password: 'Test@1234', role: 'admin' });
 
       expect(res.status).toBe(201);
       expect(res.body.data.user.role).toBe('buyer');
@@ -49,7 +46,7 @@ describe('Auth Routes', () => {
 
     it('should reject duplicate email with 400', async () => {
       await request(app).post('/api/v1/auth/register')
-        .send({ name: 'User1', email: 'dup@example.com', password: 'pass123' });
+        .send({ name: 'User1', email: 'dup@example.com', password: 'Test@1234' });
 
       const res = await request(app).post('/api/v1/auth/register')
         .send({ name: 'User2', email: 'dup@example.com', password: 'pass456' });
@@ -101,7 +98,7 @@ describe('Auth Routes', () => {
     it('should reject non-existent user with 401', async () => {
       const res = await request(app)
         .post('/api/v1/auth/login')
-        .send({ email: 'ghost@example.com', password: 'pass123' });
+        .send({ email: 'ghost@example.com', password: 'Test@1234' });
 
       expect(res.status).toBe(401);
     });
@@ -109,11 +106,11 @@ describe('Auth Routes', () => {
     it('should reject unverified user with 403', async () => {
       // Register without verifying
       await request(app).post('/api/v1/auth/register')
-        .send({ name: 'Unverified', email: 'unverified@example.com', password: 'pass123' });
+        .send({ name: 'Unverified', email: 'unverified@example.com', password: 'Test@1234' });
 
       const res = await request(app)
         .post('/api/v1/auth/login')
-        .send({ email: 'unverified@example.com', password: 'pass123' });
+        .send({ email: 'unverified@example.com', password: 'Test@1234' });
 
       expect(res.status).toBe(403);
     });
@@ -123,7 +120,7 @@ describe('Auth Routes', () => {
   describe('GET /api/v1/auth/me', () => {
     it('should return current user profile when authenticated', async () => {
       const { token } = await createVerifiedUser(request, app, {
-        name: 'Me User', email: 'me@example.com', password: 'pass123',
+        name: 'Me User', email: 'me@example.com', password: 'Test@1234',
       });
 
       const res = await request(app)
@@ -152,7 +149,7 @@ describe('Auth Routes', () => {
   describe('POST /api/v1/auth/logout', () => {
     it('should logout successfully', async () => {
       const { token, refreshToken } = await createVerifiedUser(request, app, {
-        name: 'Logout User', email: 'logout@example.com', password: 'pass123',
+        name: 'Logout User', email: 'logout@example.com', password: 'Test@1234',
       });
 
       const res = await request(app)

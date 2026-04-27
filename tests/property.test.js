@@ -12,10 +12,10 @@ let ownerToken, buyerToken, propertyId;
 
 beforeEach(async () => {
   const owner = await createVerifiedUser(request, app, {
-    name: 'Owner User', email: 'owner@test.com', password: 'pass123', role: 'owner',
+    name: 'Owner User', email: 'owner@test.com', password: 'Test@1234', role: 'owner',
   });
   const buyer = await createVerifiedUser(request, app, {
-    name: 'Buyer User', email: 'buyer@test.com', password: 'pass123', role: 'buyer',
+    name: 'Buyer User', email: 'buyer@test.com', password: 'Test@1234', role: 'buyer',
   });
 
   ownerToken = owner.token;

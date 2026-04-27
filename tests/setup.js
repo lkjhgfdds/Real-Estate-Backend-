@@ -34,19 +34,16 @@ afterAll(async () => {
   if (mongod) await mongod.stop();
 });
 
-// Clean all collections between each test
-afterEach(async () => {
-  const collections = mongoose.connection.collections;
-  for (const key in collections) {
-    await collections[key].deleteMany({});
-  }
-});
+// NOTE: Global afterEach cleanup is intentionally removed.
+// Each test file manages its own cleanup (afterEach or afterAll).
+// Cross-file contamination is impossible — every file gets a fresh
+// MongoMemoryServer from the beforeAll above.
 
 /**
  * Helper: register + verify + login a user in one step.
  * Returns { token, refreshToken, user }
  */
-global.createVerifiedUser = async (request, app, { name, email, password, role = 'buyer' } = {}) => {
+global.createVerifiedUser = async (request, app, { name, email, password, role = 'buyer', kycStatus = 'approved' } = {}) => {
   const User = require('../src/models/user.model');
 
   // 1. Register
@@ -55,8 +52,8 @@ global.createVerifiedUser = async (request, app, { name, email, password, role =
     throw new Error(`Register failed for ${email}: ${JSON.stringify(regRes.body)}`);
   }
 
-  // 2. Mark as verified + set desired role directly in DB
-  await User.findOneAndUpdate({ email }, { isVerified: true, role });
+  // 2. Mark as verified, set role, and set KYC status directly in DB
+  await User.findOneAndUpdate({ email }, { isVerified: true, role, kycStatus });
 
   // 3. Login
   const loginRes = await request(app).post('/api/v1/auth/login').send({ email, password });

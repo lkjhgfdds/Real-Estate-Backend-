@@ -13,7 +13,7 @@ const User     = require('../src/models/user.model');
 const Property = require('../src/models/property.model');
 const Booking  = require('../src/models/booking.model');
 const mongoose = require('mongoose');
-const { createVerifiedUser } = require('./setup'); // helper to create verified users
+// global.createVerifiedUser is available automatically
 
 let ownerToken, buyerToken, propertyId, bookingId;
 
@@ -25,10 +25,10 @@ beforeEach(async () => {
 
   // Create verified users
   const owner = await createVerifiedUser(request, app, {
-    name: 'Owner', email: 'owner@test.com', password: 'pass123', role: 'owner',
+    name: 'Owner', email: 'owner@test.com', password: 'Test@1234', role: 'owner',
   });
   const buyer = await createVerifiedUser(request, app, {
-    name: 'Buyer', email: 'buyer@test.com', password: 'pass123', role: 'buyer',
+    name: 'Buyer', email: 'buyer@test.com', password: 'Test@1234', role: 'buyer',
   });
 
   ownerToken = owner.token;

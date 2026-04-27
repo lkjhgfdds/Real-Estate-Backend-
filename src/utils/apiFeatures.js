@@ -19,31 +19,35 @@ class APIFeatures {
     return this;
   }
 
-  // FIX — Search was only working on title
-  // Now includes: title + description + location.city + location.district
+  // Uses the full-text index (title ×10, description ×5, city ×5, district ×1).
+  // Falls back to $or/$regex only when the search term is absent/empty.
+  // countDocuments uses this.filterQuery which is kept in sync.
   search() {
     if (!this.queryString.search) return this;
 
     const s = this.queryString.search.trim();
+    if (!s) return this;
 
-    // Use $text index if available (faster and more accurate)
-    // Otherwise use $or with $regex
-    const keyword = {
-      $or: [
-        { title:               { $regex: s, $options: 'i' } },
-        { description:         { $regex: s, $options: 'i' } },
-        { 'location.city':     { $regex: s, $options: 'i' } },
-        { 'location.district': { $regex: s, $options: 'i' } },
-      ],
-    };
+    // $text leverages MongoDB's weighted full-text index — no collection scan.
+    const textQuery = { $text: { $search: s } };
 
-    // FIX — Add search conditions to filterQuery so countDocuments returns correct count
-    this.filterQuery = { ...this.filterQuery, ...keyword };
-    this.query = this.query.find(keyword);
+    // Keep filterQuery in sync so countDocuments() returns the correct total.
+    this.filterQuery    = { ...this.filterQuery, ...textQuery };
+    this.query          = this.query.find(textQuery);
+    this._textSearch    = true; // tell sort() to rank by relevance
     return this;
   }
 
   sort() {
+    // When text search is active and no explicit sort requested,
+    // rank results by MongoDB textScore (relevance).
+    if (this._textSearch && !this.queryString.sort) {
+      this.query = this.query
+        .select({ score: { $meta: 'textScore' } })
+        .sort({ score: { $meta: 'textScore' } });
+      return this;
+    }
+
     if (this.queryString.sort) {
       const sortBy = this.queryString.sort.split(',').join(' ');
       this.query = this.query.sort(sortBy);
