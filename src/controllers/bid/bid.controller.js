@@ -5,6 +5,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const AppError     = require('../../utils/AppError');
 const { emitNewBid } = require('../../config/socket');
 const { createNotification } = require('../../utils/notificationHelper');
+const { cursorPaginate } = require('../../utils/cursorPaginate');
 
 // ─── Place Bid ────────────────────────────────────────────────
 exports.placeBid = asyncHandler(async (req, res, next) => {
@@ -19,58 +20,77 @@ exports.placeBid = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
   let populatedBid;
   let auction;
+  let retries = 5;
+
   try {
-    session.startTransaction();
+    while (retries >= 0) {
+      try {
+        session.startTransaction();
 
-    auction = await Auction.findById(auctionId).session(session);
-    if (!auction) throw new AppError('Auction not found', 404);
+        // Acquire an early write-lock on the auction to prevent late TransientTransactionErrors
+        auction = await Auction.findOneAndUpdate(
+          { _id: auctionId },
+          { $set: { updatedAt: new Date() } },
+          { session, new: true }
+        );
+        if (!auction) throw new AppError('Auction not found', 404);
 
-    const now = new Date();
-    if (auction.status !== 'active' || now < auction.startDate || now > auction.endDate) {
-      throw new AppError('Auction is not active or has ended', 400);
+        const now = new Date();
+        if (auction.status !== 'active' || now < auction.startDate || now > auction.endDate) {
+          throw new AppError('Auction is not active or has ended', 400);
+        }
+
+        if (!req.user.isActive || req.user.isBanned) {
+          throw new AppError('Your account is suspended and you cannot bid', 403);
+        }
+
+        const minimumBid = (auction.currentBid || auction.startingPrice) + auction.bidIncrement;
+        if (amount < minimumBid) {
+          throw new AppError(
+            `Bid amount must be at least ${minimumBid} (current: ${auction.currentBid}, increment: ${auction.bidIncrement})`,
+            400
+          );
+        }
+
+        if (auction.seller.toString() === bidderId.toString()) {
+          throw new AppError('You cannot bid on your own auction', 403);
+        }
+
+        await Bid.updateMany(
+          { auction: auctionId, isWinning: true },
+          { isWinning: false },
+          { session }
+        );
+
+        const [newBid] = await Bid.create(
+          [{ auction: auctionId, bidder: bidderId, amount, isWinning: true }],
+          { session }
+        );
+
+        await Auction.findByIdAndUpdate(
+          auctionId,
+          { currentBid: amount },
+          { session, new: true }
+        );
+
+        await session.commitTransaction();
+        populatedBid = await newBid.populate('bidder', 'name email');
+        break; // Success, exit retry loop
+      } catch (err) {
+        await session.abortTransaction();
+        if (err.hasErrorLabel && err.hasErrorLabel('TransientTransactionError') && retries > 0) {
+          retries--;
+          // Jitter: wait 10-100ms before retrying to prevent livelock
+          await new Promise(r => setTimeout(r, Math.floor(Math.random() * 90) + 10));
+          continue;
+        }
+        throw err;
+      }
     }
-
-    // FIX — Check that the bidder account is active
-    if (!req.user.isActive || req.user.isBanned) {
-      throw new AppError('Your account is suspended and you cannot bid', 403);
-    }
-
-    const minimumBid = (auction.currentBid || auction.startingPrice) + auction.bidIncrement;
-    if (amount < minimumBid) {
-      throw new AppError(
-        `Bid amount must be at least ${minimumBid} (current: ${auction.currentBid}, increment: ${auction.bidIncrement})`,
-        400
-      );
-    }
-
-    if (auction.seller.toString() === bidderId.toString()) {
-      throw new AppError('You cannot bid on your own auction', 403);
-    }
-
-    await Bid.updateMany(
-      { auction: auctionId, isWinning: true },
-      { isWinning: false },
-      { session }
-    );
-
-    const [newBid] = await Bid.create(
-      [{ auction: auctionId, bidder: bidderId, amount, isWinning: true }],
-      { session }
-    );
-
-    await Auction.findByIdAndUpdate(
-      auctionId,
-      { currentBid: amount },
-      { session, new: true }
-    );
-
-    await session.commitTransaction();
-    populatedBid = await newBid.populate('bidder', 'name email');
   } catch (err) {
-    await session.abortTransaction();
     throw err;
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 
   emitNewBid(auctionId, {
@@ -98,22 +118,30 @@ exports.getBidsForAuction = asyncHandler(async (req, res, next) => {
   const auction = await Auction.findById(auctionId);
   if (!auction) return next(new AppError('Auction not found', 404));
 
-  const bids = await Bid.find({ auction: auctionId })
-    .populate('bidder', 'name email')
-    .sort({ amount: -1, createdAt: -1 });
+  const { data: bids, nextCursor, hasMore, count } = await cursorPaginate(Bid, {
+    filter: { auction: auctionId },
+    populate: { path: 'bidder', select: 'name email' },
+    sort: 'desc',
+    limit: parseInt(req.query.limit) || 20,
+    afterCursor: req.query.cursor
+  });
 
-  res.status(200).json({ status: 'success', count: bids.length, data: { bids } });
+  res.status(200).json({ status: 'success', count, nextCursor, hasMore, data: { bids } });
 });
 
 // ─── Get My Bids ──────────────────────────────────────────────
 exports.getMyBids = asyncHandler(async (req, res) => {
-  const bids = await Bid.find({ bidder: req.user._id })
-    .populate({
+  const { data: bids, nextCursor, hasMore, count } = await cursorPaginate(Bid, {
+    filter: { bidder: req.user._id },
+    populate: {
       path:     'auction',
       select:   'startingPrice currentBid startDate endDate status',
       populate: { path: 'property', select: 'title location images price' },
-    })
-    .sort({ createdAt: -1 });
+    },
+    sort: 'desc',
+    limit: parseInt(req.query.limit) || 20,
+    afterCursor: req.query.cursor
+  });
 
-  res.status(200).json({ status: 'success', count: bids.length, data: { bids } });
+  res.status(200).json({ status: 'success', count, nextCursor, hasMore, data: { bids } });
 });

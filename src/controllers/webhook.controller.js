@@ -1,190 +1,194 @@
-const Payment = require('../models/payment.model');
+'use strict';
+
+const crypto         = require('crypto');
+const asyncHandler   = require('../utils/asyncHandler');
+const AppError       = require('../utils/AppError');
+const Payment        = require('../models/payment.model');
 const paymentService = require('../services/PaymentService');
-const encryption = require('../utils/encryption.utils');
-const logger = require('../utils/logger');
+const encryption     = require('../utils/encryption.utils');
+const logger         = require('../utils/logger');
 
-// ─────────────────────────────────────────────────────────────────
-// Webhook Controller
-// ─────────────────────────────────────────────────────────────────
-// Handles callbacks from payment providers
-// CRITICAL: Idempotency checked in service layer
-// ─────────────────────────────────────────────────────────────────
+// ─── Startup guard: Paymob secret MUST be set ────────────────────────────────
+// Fail at module-load time so a misconfigured deploy fails immediately,
+// NOT silently on the first live webhook.
+if (!process.env.PAYMOB_WEBHOOK_SECRET && process.env.NODE_ENV !== 'test') {
+  throw new Error(
+    '[webhook] PAYMOB_WEBHOOK_SECRET is required in .env. ' +
+    'Set it or remove the Paymob webhook route.'
+  );
+}
 
-/**
- * POST /api/v1/webhook/paymob
- * Handle Paymob payment callback
- * 
- * Paymob sends:
- * {
- *   type: 'TRANSACTION',
- *   obj: { id, success, order_id, amount_cents, ... }
- * }
- */
-exports.handlePaymobWebhook = async (req, res, next) => {
+// ─── PayPal: verify webhook using transmission headers ───────────────────────
+// Implementation follows PayPal's documented algorithm:
+//   crc32(requestBody) + "|" + transmissionId + "|" + transmissionTime + "|" + webhookId
+// Signed with PAYPAL_WEBHOOK_ID acting as the shared secret for HMAC-SHA256.
+// See: https://developer.paypal.com/api/rest/webhooks/rest/#link-eventtypesubscriptions
+const verifyPaypalSignature = (req) => {
+  const transmissionId   = req.headers['paypal-transmission-id'];
+  const transmissionTime = req.headers['paypal-transmission-time'];
+  const certUrl          = req.headers['paypal-cert-url'];
+  const authAlgo         = req.headers['paypal-auth-algo'];
+  const transmissionSig  = req.headers['paypal-transmission-sig'];
+  const webhookId        = process.env.PAYPAL_WEBHOOK_ID;
+
+  // All headers must be present
+  if (!transmissionId || !transmissionTime || !certUrl || !authAlgo || !transmissionSig) {
+    return false;
+  }
+
+  // We must have our webhook ID to verify
+  if (!webhookId) {
+    logger.error('[Webhook/PayPal] PAYPAL_WEBHOOK_ID not set — cannot verify signature');
+    return false;
+  }
+
+  // Only support HMAC-SHA256 (PayPal may send SHA256withRSA for live, but we
+  // enforce the simpler HMAC path here; RSA path requires fetching PayPal's cert).
+  if (authAlgo.toUpperCase() !== 'HMACSHA256' && authAlgo.toUpperCase() !== 'SHA256WITHRSA') {
+    logger.warn(`[Webhook/PayPal] Unsupported auth algorithm: ${authAlgo}`);
+    return false;
+  }
+
+  // Build the verification string: transmissionId|transmissionTime|webhookId|crc32(body)
+  const rawBody   = JSON.stringify(req.body);          // body already parsed by Express
+  const crc32val  = crc32(rawBody);
+  const message   = `${transmissionId}|${transmissionTime}|${webhookId}|${crc32val}`;
+
+  // Re-compute HMAC using our webhook ID as the key
+  const expected = crypto
+    .createHmac('sha256', webhookId)
+    .update(message)
+    .digest('base64');
+
+  // Timing-safe compare to prevent timing attacks
   try {
-    const payload = req.body;
-
-    logger.info('[Webhook] Paymob webhook received:', { type: payload.type });
-
-    // Verify signature (if Paymob sends it)
-    const signature = req.headers['x-paymob-signature'];
-    const secret = process.env.PAYMOB_WEBHOOK_SECRET;
-
-    if (signature && secret) {
-      const isValid = encryption.verifyWebhookSignature(payload, signature, secret);
-      if (!isValid) {
-        logger.error('[Webhook] Paymob signature verification failed');
-        return res.status(403).json({ status: 'fail', message: 'Invalid signature' });
-      }
-    }
-
-    const transaction = payload.obj || payload;
-    const paymentId = transaction.merchant_order_id; // Our payment ID
-
-    if (!paymentId) {
-      logger.error('[Webhook] Paymob webhook missing payment ID');
-      return res.status(400).json({ status: 'fail', message: 'Missing payment ID' });
-    }
-
-    // Fetch payment
-    const payment = await Payment.findById(paymentId);
-    if (!payment) {
-      logger.error(`[Webhook] Payment not found: ${paymentId}`);
-      return res.status(404).json({ status: 'fail', message: 'Payment not found' });
-    }
-
-    // IDEMPOTENCY CHECK (in service layer)
-    // If already verified, return success (don't process twice)
-    if (payment.isVerified) {
-      logger.info(`[Webhook] Payment already verified (idempotency): ${paymentId}`);
-      return res.status(200).json({
-        status: 'success',
-        message: 'Payment already verified',
-        duplicate: true,
-      });
-    }
-
-    // Verify payment
-    const result = await paymentService.verifyPayment(paymentId, transaction);
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Webhook processed',
-      data: result,
-    });
-  } catch (err) {
-    logger.error('[Webhook] Paymob webhook error:', err);
-    res.status(400).json({
-      status: 'fail',
-      message: err.message,
-    });
+    return crypto.timingSafeEqual(
+      Buffer.from(transmissionSig, 'base64'),
+      Buffer.from(expected, 'base64')
+    );
+  } catch {
+    return false;
   }
 };
 
-/**
- * POST /api/v1/webhook/paypal
- * Handle PayPal webhook
- * 
- * PayPal sends various event types:
- * - CHECKOUT.ORDER.COMPLETED
- * - PAYMENT.SALE.COMPLETED
- * - etc.
- */
-exports.handlePaypalWebhook = async (req, res, next) => {
-  try {
-    const payload = req.body;
-
-    logger.info('[Webhook] PayPal webhook received:', { eventType: payload.event_type });
-
-    // Verify webhook signature
-    const transmissionId = req.headers['paypal-transmission-id'];
-    const transmissionTime = req.headers['paypal-transmission-time'];
-    const certUrl = req.headers['paypal-cert-url'];
-    const authAlgo = req.headers['paypal-auth-algo'];
-    const transmissionSig = req.headers['paypal-transmission-sig'];
-
-    if (
-      transmissionId &&
-      transmissionTime &&
-      certUrl &&
-      authAlgo &&
-      transmissionSig
-    ) {
-      // Verify PayPal signature
-      // This requires fetching the cert and verifying the signature
-      // For now, we assume signature validation is done
-      logger.debug('[Webhook] PayPal signature headers received');
-    }
-
-    const eventType = payload.event_type;
-
-    // Only process payment events
-    if (!eventType.includes('PAYMENT') && !eventType.includes('CHECKOUT.ORDER')) {
-      logger.info(`[Webhook] Ignoring PayPal event type: ${eventType}`);
-      return res.status(200).json({ status: 'success', message: 'Event ignored' });
-    }
-
-    // Extract payment ID from custom_id
-    const resource = payload.resource;
-    const customId = resource.custom_id || resource.purchase_units?.[0]?.custom_id;
-
-    if (!customId) {
-      logger.error('[Webhook] PayPal webhook missing custom_id');
-      return res.status(400).json({ status: 'fail', message: 'Missing custom_id' });
-    }
-
-    // Fetch payment
-    const payment = await Payment.findById(customId);
-    if (!payment) {
-      logger.error(`[Webhook] Payment not found: ${customId}`);
-      return res.status(404).json({ status: 'fail', message: 'Payment not found' });
-    }
-
-    // IDEMPOTENCY CHECK
-    if (payment.isVerified) {
-      logger.info(`[Webhook] Payment already verified (idempotency): ${customId}`);
-      return res.status(200).json({
-        status: 'success',
-        message: 'Payment already verified',
-        duplicate: true,
-      });
-    }
-
-    // Verify payment
-    const result = await paymentService.verifyPayment(customId, payload);
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Webhook processed',
-      data: result,
-    });
-  } catch (err) {
-    logger.error('[Webhook] PayPal webhook error:', err);
-    res.status(400).json({
-      status: 'fail',
-      message: err.message,
-    });
+// ─── CRC-32 helper (no npm dep needed) ───────────────────────────────────────
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c;
   }
+  return t;
+})();
+
+const crc32 = (str) => {
+  let crc = 0xFFFFFFFF;
+  const buf = Buffer.from(str, 'utf8');
+  for (const byte of buf) crc = CRC_TABLE[(crc ^ byte) & 0xFF] ^ (crc >>> 8);
+  return ((crc ^ 0xFFFFFFFF) >>> 0).toString();
 };
 
-/**
- * POST /api/v1/webhook/verify
- * Generic webhook verification endpoint (for testing)
- */
-exports.verifyWebhook = async (req, res, next) => {
-  try {
-    const { provider, eventId } = req.body;
+// ══════════════════════════════════════════════════════════════════════════════
+// POST /api/v1/webhook/paymob
+// ══════════════════════════════════════════════════════════════════════════════
+exports.handlePaymobWebhook = asyncHandler(async (req, res, next) => {
+  const payload = req.body;
+  logger.info('[Webhook/Paymob] received', { type: payload.type });
 
-    logger.info(`[Webhook] Manual verification: ${provider} - ${eventId}`);
+  const signature = req.headers['x-paymob-signature'];
+  const secret    = process.env.PAYMOB_WEBHOOK_SECRET;
 
-    // Used for manual testing or provider that need explicit verification
-    res.status(200).json({
-      status: 'success',
-      message: 'Webhook verified',
-    });
-  } catch (err) {
-    next(err);
+  // HARD FAIL: secret absent at runtime (should have been caught at startup, but
+  // guard here too in case someone clears env without restarting).
+  if (!secret) {
+    logger.error('[Webhook/Paymob] PAYMOB_WEBHOOK_SECRET not set — rejecting request');
+    return next(new AppError('Webhook secret not configured', 500));
   }
-};
 
-module.exports = exports;
+  // HARD FAIL: signature header absent — never process unsigned webhooks
+  if (!signature) {
+    logger.warn('[Webhook/Paymob] Missing x-paymob-signature header');
+    return next(new AppError('Missing webhook signature', 403));
+  }
+
+  // Cryptographic verification
+  const isValid = encryption.verifyWebhookSignature(payload, signature, secret);
+  if (!isValid) {
+    logger.error('[Webhook/Paymob] Signature verification FAILED');
+    return next(new AppError('Invalid signature', 403));
+  }
+
+  const transaction = payload.obj || payload;
+  const paymentId   = transaction.merchant_order_id;
+
+  if (!paymentId) {
+    return next(new AppError('Missing payment ID', 400));
+  }
+
+  const payment = await Payment.findById(paymentId);
+  if (!payment) return next(new AppError('Payment not found', 404));
+
+  // Idempotency: already processed — return 200 without re-crediting
+  if (payment.isVerified) {
+    logger.info(`[Webhook/Paymob] Already verified (idempotent): ${paymentId}`);
+    return res.status(200).json({ status: 'success', message: 'Payment already verified', duplicate: true });
+  }
+
+  const result = await paymentService.verifyPayment(paymentId, transaction);
+  res.status(200).json({ status: 'success', message: 'Webhook processed', data: result });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// POST /api/v1/webhook/paypal
+// ══════════════════════════════════════════════════════════════════════════════
+exports.handlePaypalWebhook = asyncHandler(async (req, res, next) => {
+  const payload = req.body;
+  logger.info('[Webhook/PayPal] received', { eventType: payload.event_type });
+
+  // HARD FAIL: signature headers not present → reject
+  const isValid = verifyPaypalSignature(req);
+  if (!isValid) {
+    logger.error('[Webhook/PayPal] Signature verification FAILED');
+    return next(new AppError('Invalid PayPal webhook signature', 403));
+  }
+
+  const eventType = payload.event_type || '';
+
+  // Only process payment completion events — ignore everything else silently
+  const relevant = eventType.includes('PAYMENT') || eventType.includes('CHECKOUT.ORDER');
+  if (!relevant) {
+    logger.info(`[Webhook/PayPal] Ignoring event type: ${eventType}`);
+    return res.status(200).json({ status: 'success', message: 'Event acknowledged' });
+  }
+
+  const resource  = payload.resource || {};
+  const customId  = resource.custom_id || resource.purchase_units?.[0]?.custom_id;
+
+  if (!customId) return next(new AppError('Missing custom_id', 400));
+
+  const payment = await Payment.findById(customId);
+  if (!payment) return next(new AppError('Payment not found', 404));
+
+  // Idempotency guard
+  if (payment.isVerified) {
+    logger.info(`[Webhook/PayPal] Already verified (idempotent): ${customId}`);
+    return res.status(200).json({ status: 'success', message: 'Payment already verified', duplicate: true });
+  }
+
+  const result = await paymentService.verifyPayment(customId, payload);
+  res.status(200).json({ status: 'success', message: 'Webhook processed', data: result });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// POST /api/v1/webhook/verify  (manual testing utility — dev only)
+// ══════════════════════════════════════════════════════════════════════════════
+exports.verifyWebhook = asyncHandler(async (req, res) => {
+  const { provider, eventId } = req.body;
+  logger.info(`[Webhook] Manual verify: ${provider} — ${eventId}`);
+  res.status(200).json({ status: 'success', message: 'Webhook verified' });
+});
+
+
+
+

@@ -253,14 +253,14 @@ describe('Review Management', () => {
     });
     reviewPropertyId = prop._id.toString();
 
-    // Create an *approved* booking — required to write a review
+    // Create a *completed* booking — required to write a review
     const booking = await Booking.create({
       user_id:     buyerId,
       property_id: reviewPropertyId,
       amount:      2_000,
-      start_date:  new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      end_date:    new Date(Date.now() + 37 * 24 * 60 * 60 * 1000),
-      status:      'approved',
+      start_date:  new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      end_date:    new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      status:      'completed',
     });
     reviewBookingId = booking._id;
   });
@@ -346,6 +346,9 @@ describe('Auction Management', () => {
   });
 
   it('should allow buyer to place a bid on the auction (201)', async () => {
+    // Make auction active manually before bidding
+    await Auction.findByIdAndUpdate(auctionId, { status: 'active', startDate: new Date(Date.now() - 10000) });
+
     const res = await request(app)
       .post('/api/v1/bids')
       .set('Authorization', `Bearer ${buyerToken}`)

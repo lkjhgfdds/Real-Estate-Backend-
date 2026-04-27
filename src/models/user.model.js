@@ -110,7 +110,6 @@ const userSchema = new mongoose.Schema(
 // Indexes
 // Note: email index is created automatically by unique: true
 userSchema.index({ isActive: 1 });
-userSchema.index({ kycStatus: 1 });
 userSchema.index({ kycSubmittedAt: 1 });
 
 

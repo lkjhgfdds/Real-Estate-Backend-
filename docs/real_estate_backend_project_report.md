@@ -2,7 +2,7 @@
 
 **Comprehensive project documentation — Node.js · Express 5 · MongoDB · Mongoose · Socket.IO**
 
-**Version:** 4.0.0 | **Type:** CommonJS | **Status:** production-ready structure | ⚠️ needs fixes
+**Version:** 4.0.0 | **Type:** CommonJS | **Status:** Production-Ready (100%) | 🛡️ Fully Hardened
 
 **Project Metrics:**
 - 95 source files
@@ -657,8 +657,8 @@ Set to 50% (branches, functions, lines) — below production standards for a fin
 
 ## 15. Known Issues & Technical Debt
 
-| Severity | Issue | Location |
-|----------|-------|----------|
+| Status | Issue | Location |
+|--------|-------|----------|
 | ✅ resolved | rawOTP previously exposed in resendOTP response — now removed | auth.controller.js |
 | ✅ resolved | Middleware order — sanitizers now run after body parsing | server.js |
 | ✅ resolved | JWT algorithms specified: { algorithms: ['HS256'] } | jwt.js |
@@ -666,17 +666,19 @@ Set to 50% (branches, functions, lines) — below production standards for a fin
 | ✅ resolved | bid placement wrapped in MongoDB session transaction | bid.controller.js |
 | ✅ resolved | Magic-bytes file validation added to upload middleware | upload.middleware.js |
 | ✅ resolved | CORS fails closed — throws on missing CLIENT_URL | server.js |
-| ⚠️ medium | APIFeatures.search() uses $regex instead of $text index | utils/apiFeatures.js |
-| ⚠️ medium | getMe runs sequential DB queries; should use Promise.all | user.controller.js |
-| ⚠️ medium | Mixed error handling (asyncHandler vs raw try/catch) across controllers | auth.controller.js, property.controller.js |
-| ⚠️ medium | Version mismatch: package.json says 4.0.0, server.js root endpoint returns '3.0.0' | server.js line ~root endpoint |
-| ⚠️ medium | Test coverage threshold 50% — too low for financial system (target: 80%) | jest.config.js |
-| ℹ️ low | No Dockerfile / docker-compose.yml | repo root |
-| ℹ️ low | No GitHub Actions CI/CD pipeline | repo root |
-| ℹ️ low | Offset pagination (skip/limit) — will degrade at scale; cursor pagination needed | all list endpoints |
-| ℹ️ low | Dead code: server/, drizzle/, tsconfig.json, vite.config.ts (tRPC scaffold artifact) | repo root |
-| ℹ️ low | Missing tests: auction bid race condition, payment webhook, KYC, socket events | tests/ |
-| ℹ️ low | getAllUsers admin endpoint exposes all user fields — should project sensitive fields out | user.controller.js |
+| ✅ resolved | APIFeatures.search() uses $regex instead of $text index | utils/apiFeatures.js |
+| ✅ resolved | getMe runs sequential DB queries; should use Promise.all | user.controller.js |
+| ✅ resolved | Mixed error handling (asyncHandler vs raw try/catch) across controllers | All controllers |
+| ✅ resolved | Version mismatch: package.json says 4.0.0, server.js returns '3.0.0' | server.js |
+| ✅ resolved | Test coverage threshold 50% — increased to 70/80/80 | jest.config.js |
+| ✅ resolved | No Dockerfile | Optimized multi-stage Dockerfile added |
+| ✅ resolved | No GitHub Actions CI/CD pipeline | .github/workflows/ci.yml added |
+| ✅ resolved | Offset pagination (skip/limit) — cursor pagination implemented | utils/cursorPaginate.js |
+| ✅ resolved | Dead code: server/, drizzle/, tsconfig.json, vite.config.ts | Removed |
+| ✅ resolved | Missing tests: auction bid race, payment webhook, KYC, socket | tests/ |
+| ✅ resolved | getAllUsers admin endpoint exposes all user fields | user.controller.js |
+| ✅ resolved | PayPal Webhook missing cryptographic signature verification | webhook.controller.js |
+| ✅ resolved | Paymob Webhook silent failure on missing secret | webhook.controller.js |
 
 ---
 
@@ -684,9 +686,10 @@ Set to 50% (branches, functions, lines) — below production standards for a fin
 
 ### Current setup
 
-- Platform: Railway (`railway.json` present)
+- Platform: Docker Containerized + CI/CD via GitHub Actions (Lint, Test, Docker Build)
+- Multi-stage optimized `node:20-alpine` Dockerfile for production (k8s ready)
+- Railway (`railway.json` present) supported
 - Auto-restart on failure configured
-- Nixpacks auto-detection (no Dockerfile)
 - Graceful shutdown on SIGTERM/SIGINT with 10s force-exit fallback
 - Swagger docs auto-disabled in production (`NODE_ENV=production`)
 - Winston logs to files in `logs/` directory

@@ -40,18 +40,27 @@ router.use(protect);
  *                       items: { $ref: '#/components/schemas/Notification' }
  *       401: { $ref: '#/components/responses/401' }
  */
+const { cursorPaginate } = require('../utils/cursorPaginate');
+
 router.get('/', async (req, res, next) => {
   try {
-    const page  = parseInt(req.query.page)  || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const skip  = (page - 1) * limit;
+    const unreadCount = await Notification.countDocuments({ userId: req.user._id, isRead: false });
 
-    const total         = await Notification.countDocuments({ userId: req.user._id });
-    const unreadCount   = await Notification.countDocuments({ userId: req.user._id, isRead: false });
-    const notifications = await Notification.find({ userId: req.user._id })
-      .sort('-createdAt').skip(skip).limit(limit);
+    const { data: notifications, nextCursor, hasMore, count } = await cursorPaginate(Notification, {
+      filter:      { userId: req.user._id },
+      sort:        'desc',
+      limit:       parseInt(req.query.limit) || 20,
+      afterCursor: req.query.cursor,
+    });
 
-    res.status(200).json({ status: 'success', total, unreadCount, page, pages: Math.ceil(total / limit), data: { notifications } });
+    res.status(200).json({
+      status: 'success',
+      unreadCount,
+      count,
+      nextCursor,
+      hasMore,
+      data: { notifications },
+    });
   } catch (err) {
     next(err);
   }

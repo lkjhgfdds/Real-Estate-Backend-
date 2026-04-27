@@ -123,7 +123,7 @@ describe('POST /api/v1/payments/checkout — KYC Gate', () => {
   beforeAll(async () => {
     // Create a buyer WITHOUT KYC approval
     const noKycBuyer = await createVerifiedUser(request, app, {
-      name: 'No KYC Buyer', email: 'nokyc.buyer@test.com', password: 'Test@1234', role: 'buyer',
+      name: 'No KYC Buyer', email: 'nokyc.buyer@test.com', password: 'Test@1234', role: 'buyer', kycStatus: 'not_submitted'
     });
     noKycToken = noKycBuyer.token;
     const noKycBuyerId = noKycBuyer.user._id;

@@ -136,8 +136,6 @@ paymentSchema.index(
 // Queries
 paymentSchema.index({ user: 1, createdAt: -1 });
 paymentSchema.index({ property: 1, createdAt: -1 });
-paymentSchema.index({ expiresAt: 1 });  // For cron cleanup
-paymentSchema.index({ isVerified: 1 });  // For idempotency checks
 paymentSchema.index({ transactionId: 1 }, { sparse: true });
 
 module.exports = mongoose.model('Payment', paymentSchema);

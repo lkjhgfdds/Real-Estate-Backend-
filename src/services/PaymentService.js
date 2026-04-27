@@ -3,6 +3,7 @@ const Booking = require('../models/booking.model');
 const Property = require('../models/property.model');
 const User = require('../models/user.model');
 const ProviderFactory = require('./providers/factory');
+const AppError = require('../utils/appError');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
 
@@ -152,7 +153,7 @@ class PaymentService {
 
       const payment = await Payment.findById(paymentId).session(session);
       if (!payment) {
-        throw new Error(`Payment ${paymentId} not found`);
+        throw new AppError(`Payment ${paymentId} not found`, 404);
       }
 
       // CRITICAL: Idempotency guard
@@ -254,7 +255,7 @@ class PaymentService {
         .populate('booking', '_id amount');
 
       if (!payment) {
-        throw new Error('Payment not found');
+        throw new AppError('Payment not found', 404);
       }
 
       return {
@@ -317,7 +318,7 @@ class PaymentService {
 
       const payment = await Payment.findById(paymentId);
       if (!payment) {
-        throw new Error('Payment not found');
+        throw new AppError('Payment not found', 404);
       }
 
       if (payment.status !== 'completed') {

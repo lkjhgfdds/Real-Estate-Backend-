@@ -1,6 +1,7 @@
 const rateLimit = require('express-rate-limit');
 
 const createLimiter = (options) => rateLimit({
+  skip: (req, res) => process.env.NODE_ENV === 'test',
   standardHeaders: true,
   legacyHeaders:   false,
   handler: (req, res) => {

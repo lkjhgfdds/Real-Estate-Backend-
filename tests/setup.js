@@ -5,13 +5,13 @@
  */
 
 const mongoose              = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
 let mongod;
 
 // ─── Global Setup ──────────────────────────────────────────────
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongod.getUri();
 
   if (mongoose.connection.readyState !== 0) {

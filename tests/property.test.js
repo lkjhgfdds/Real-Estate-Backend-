@@ -22,6 +22,16 @@ beforeEach(async () => {
   buyerToken = buyer.token;
 });
 
+afterEach(async () => {
+  const mongoose = require('mongoose');
+  if (mongoose.connection.db) {
+    const collections = await mongoose.connection.db.collections();
+    for (let collection of collections) {
+      await collection.deleteMany({});
+    }
+  }
+});
+
 describe('Property Routes', () => {
 
   // ── List Properties ───────────────────────────────────────────
