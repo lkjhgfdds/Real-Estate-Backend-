@@ -30,7 +30,7 @@ const logger = require('../../utils/logger');
 // Safe user projection — never expose sensitive fields in response
 const SAFE_PROJECTION = '-password -googleId -otpHash -otpExpires -otpAttempts '
   + '-passwordResetToken -passwordResetExpiry -loginAttempts -lockUntil '
-  + '-tokenVersion -__v -kycDocuments -bankAccounts';
+  + '-tokenVersion -__v';
 
 /**
  * POST /api/v1/auth/google

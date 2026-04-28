@@ -74,8 +74,9 @@ const bidRoutes            = require('./routes/bid.routes');
 const notificationRoutes   = require('./routes/notification.routes');
 const searchRoutes         = require('./routes/search.routes');
 const reportRoutes         = require('./routes/report.routes');
-const healthRoutes         = require('./routes/health.routes');
 const kycRoutes            = require('./routes/kyc.routes');
+const healthRoutes         = require('./routes/health.routes');
+const uploadRoutes         = require('./routes/upload.routes');
 const CLIENT_URL = process.env.CLIENT_URL;
 
 if (!CLIENT_URL) {
@@ -148,6 +149,7 @@ app.use('/api/health', healthRoutes);
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/users`, userRoutes);
 app.use(`${API}/kyc`, kycRoutes);
+app.use(`${API}/upload`, uploadRoutes);
 app.use(`${API}/properties`, propertyRoutes);
 app.use(`${API}/search`, searchRoutes);
 app.use(`${API}/reviews`, reviewRoutes);

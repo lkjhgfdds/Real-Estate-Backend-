@@ -5,13 +5,23 @@
  */
 
 const mongoose              = require('mongoose');
-const { MongoMemoryReplSet } = require('mongodb-memory-server');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+
+const path = require('path');
 
 let mongod;
 
 // ─── Global Setup ──────────────────────────────────────────────
 beforeAll(async () => {
-  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  const baseDir = path.join('D:', 'temp', 'mongodb');
+  mongod = await MongoMemoryServer.create({
+    binary: { 
+      systemBinary: 'C:\\Users\\ElRaed\\.cache\\mongodb-binaries\\mongod-x64-win32-8.2.1.exe' 
+    },
+    instance: { 
+      dbPath: path.join(baseDir, 'data')
+    }
+  });
   const uri = mongod.getUri();
 
   if (mongoose.connection.readyState !== 0) {

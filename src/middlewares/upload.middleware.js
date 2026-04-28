@@ -87,4 +87,5 @@ const uploadImagesToCloud = async (req, _res, next) => {
 module.exports = {
   uploadPropertyImages: [handleMulterError(upload.array('images', 10)), uploadImagesToCloud],
   uploadSingleImage: [handleMulterError(upload.single('photo')), uploadImagesToCloud],
+  uploadGenericImage: [handleMulterError(upload.single('image')), uploadImagesToCloud],
 };
