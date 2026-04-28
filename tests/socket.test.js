@@ -78,7 +78,7 @@ beforeAll(async () => {
     password: 'Test@1234', role: 'owner', isVerified: true,
   });
   const prop = await Property.create({
-    title: 'Sock Prop', description: 'Socket test property description here',
+    title: 'Socket Test Property', description: 'Socket test property description here',
     price: 200_000, type: 'apartment', listingType: 'sale',
     location: { city: 'Cairo', district: 'Heliopolis' },
     owner: owner._id, isApproved: true,
@@ -98,12 +98,15 @@ beforeAll(async () => {
 
   // Spin up server on random port
   httpServer = http.createServer(app);
+  require('../src/config/socket')(httpServer);
   await new Promise((r) => httpServer.listen(0, r));
   serverPort = httpServer.address().port;
 });
 
 afterAll(async () => {
-  await new Promise((r) => httpServer.close(r));
+  if (httpServer) {
+    await new Promise((r) => httpServer.close(r));
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -265,16 +265,12 @@ describe('POST /api/v1/webhook/paymob — Payment Not Found', () => {
 // 6. No signature header — webhook secret not configured
 // ══════════════════════════════════════════════════════════════════════════════
 describe('POST /api/v1/webhook/paymob — No Signature Header', () => {
-  it('should process (not block) when no signature header is sent', async () => {
-    // When PAYMOB_WEBHOOK_SECRET is unset, the server skips verification per current logic.
-    // This test documents that behavior — a future hardening step would require it always.
+  it('should return 403 when no signature header is sent', async () => {
+    // We hardened this to ALWAYS require a signature
     const paymentService = require('../src/services/PaymentService');
     jest.spyOn(paymentService, 'verifyPayment').mockResolvedValueOnce({
       payment: { _id: paymentId, status: 'completed' },
     });
-
-    const origSecret = process.env.PAYMOB_WEBHOOK_SECRET;
-    delete process.env.PAYMOB_WEBHOOK_SECRET;
 
     const payload = {
       type: 'TRANSACTION',
@@ -285,12 +281,9 @@ describe('POST /api/v1/webhook/paymob — No Signature Header', () => {
       .post('/api/v1/payments/webhook/paymob')
       .send(payload); // no signature header
 
-    // Restore env
-    process.env.PAYMOB_WEBHOOK_SECRET = origSecret;
     jest.restoreAllMocks();
 
-    // We hardened this to ALWAYS require a signature
     expect(res.status).toBe(403);
-    expect(res.body.message).toMatch(/missing signature/i);
+    expect(res.body.message).toMatch(/missing webhook signature/i);
   });
 });

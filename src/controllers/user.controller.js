@@ -1,4 +1,4 @@
-const User         = require('../models/user.model');
+const User = require('../models/user.model');
 const RefreshToken = require('../models/refreshToken.model');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -7,9 +7,9 @@ const SAFE_USER_PROJECTION = '-bankAccounts.ibanEncrypted -loginAttempts -lockUn
 
 // ─── Get All Users (Admin) ────────────────────────────────────
 exports.getAllUsers = asyncHandler(async (req, res) => {
-  const page  = parseInt(req.query.page)  || 1;
+  const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const skip  = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
   const [total, users] = await Promise.all([
     User.countDocuments(),
@@ -22,12 +22,12 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
   ]);
 
   res.status(200).json({
-    status:  'success',
+    status: 'success',
     results: users.length,
     total,
     page,
     pages: Math.ceil(total / limit),
-    data:  { users },
+    data: { users },
   });
 });
 
@@ -49,8 +49,8 @@ exports.getMe = asyncHandler(async (req, res) => {
 
   if (user.role === 'owner' || user.role === 'agent') {
     // ── Owner / Agent dashboard ──────────────────────────────
-    const Property       = require('../models/property.model');
-    const Booking        = require('../models/booking.model');
+    const Property = require('../models/property.model');
+    const Booking = require('../models/booking.model');
     const ViewingRequest = require('../models/viewingRequest.model');
 
     const [properties, totalProperties, activeListings] = await Promise.all([
@@ -69,16 +69,16 @@ exports.getMe = asyncHandler(async (req, res) => {
       ViewingRequest.countDocuments({ property: { $in: propertyIds }, status: 'pending' }),
     ]);
 
-    dashboard.properties       = properties;
-    dashboard.totalProperties  = totalProperties;
-    dashboard.activeListings   = activeListings;
-    dashboard.bookingRequests  = bookingRequests;
+    dashboard.properties = properties;
+    dashboard.totalProperties = totalProperties;
+    dashboard.activeListings = activeListings;
+    dashboard.bookingRequests = bookingRequests;
     dashboard.upcomingViewings = upcomingViewings;
 
   } else if (user.role === 'buyer') {
     // ── Buyer dashboard ──────────────────────────────────────
-    const Favorite       = require('../models/favorite.model');
-    const Booking        = require('../models/booking.model');
+    const Favorite = require('../models/favorite.model');
+    const Booking = require('../models/booking.model');
     const ViewingRequest = require('../models/viewingRequest.model');
 
     const [savedPropertiesCount, myBookings, viewingRequests] = await Promise.all([
@@ -94,13 +94,13 @@ exports.getMe = asyncHandler(async (req, res) => {
     ]);
 
     dashboard.savedPropertiesCount = savedPropertiesCount;
-    dashboard.myBookings           = myBookings;
-    dashboard.viewingRequests      = viewingRequests;
+    dashboard.myBookings = myBookings;
+    dashboard.viewingRequests = viewingRequests;
 
   } else if (user.role === 'admin') {
     // ── Admin dashboard ──────────────────────────────────────
     const Property = require('../models/property.model');
-    const Booking  = require('../models/booking.model');
+    const Booking = require('../models/booking.model');
 
     const [totalUsers, totalProperties, totalBookings, pendingVerifications] = await Promise.all([
       User.countDocuments(),
@@ -109,9 +109,9 @@ exports.getMe = asyncHandler(async (req, res) => {
       User.countDocuments({ isVerified: false }),
     ]);
 
-    dashboard.totalUsers           = totalUsers;
-    dashboard.totalProperties      = totalProperties;
-    dashboard.totalBookings        = totalBookings;
+    dashboard.totalUsers = totalUsers;
+    dashboard.totalProperties = totalProperties;
+    dashboard.totalBookings = totalBookings;
     dashboard.pendingVerifications = pendingVerifications;
   }
 
@@ -120,12 +120,12 @@ exports.getMe = asyncHandler(async (req, res) => {
     data: {
       user,
       dashboard: {
-        role:               user.role,
-        isVerified:         user.isVerified,
-        kycStatus:          user.kycStatus,
-        kycApproved:        user.kycStatus === 'approved',
-        kycRejected:        user.kycStatus === 'rejected',
-        kycPending:         user.kycStatus === 'pending',
+        role: user.role,
+        isVerified: user.isVerified,
+        kycStatus: user.kycStatus,
+        kycApproved: user.kycStatus === 'approved',
+        kycRejected: user.kycStatus === 'rejected',
+        kycPending: user.kycStatus === 'pending',
         kycRejectionReason: user.kycRejectionReason || null,
         ...dashboard,
       },
@@ -143,7 +143,7 @@ exports.updateMe = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findByIdAndUpdate(req.user._id, updateData, {
-    new:           true,
+    new: true,
     runValidators: true,
   });
 
@@ -170,29 +170,29 @@ exports.changePassword = asyncHandler(async (req, res) => {
 
   // Issue new tokens after password change
   const { signToken, signRefreshToken } = require('../utils/jwt');
-  const accessToken     = signToken(user._id, user.tokenVersion);
+  const accessToken = signToken(user._id, user.tokenVersion);
   const newRefreshToken = signRefreshToken(user._id, user.tokenVersion);
 
   await RefreshToken.create({
-    userId:    user._id,
+    userId: user._id,
     tokenHash: RefreshToken.hashToken(newRefreshToken),
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     userAgent: req.headers['user-agent'] || '',
-    ip:        req.ip || '',
+    ip: req.ip || '',
   });
 
   res.cookie('refreshToken', newRefreshToken, {
     httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge:   30 * 24 * 60 * 60 * 1000,
-    path:     '/',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    path: '/',
   });
 
   res.status(200).json({
-    status:  'success',
+    status: 'success',
     message: 'Password changed successfully',
-    token:   accessToken,
+    token: accessToken,
   });
 });
 
