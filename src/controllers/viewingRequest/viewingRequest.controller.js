@@ -9,9 +9,9 @@ exports.createViewingRequest = async (req, res, next) => {
     const { propertyId, preferredDate, preferredTime, message } = req.body;
 
     const property = await Property.findById(propertyId);
-    if (!property) return res.status(404).json({ status: 'fail', message: 'Property not found' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
     if (property.owner.toString() === req.user._id.toString()) {
-      return res.status(400).json({ status: 'fail', message: 'You cannot request a viewing for your own property' });
+      return res.status(400).json({ status: 'fail', message: req.t('VIEWING.OWN_PROPERTY') });
     }
 
     // Prevent duplication: pending request already exists
@@ -21,7 +21,7 @@ exports.createViewingRequest = async (req, res, next) => {
       status:    'pending',
     });
     if (existing) {
-      return res.status(409).json({ status: 'fail', message: 'You already have a pending viewing request for this property' });
+      return res.status(409).json({ status: 'fail', message: req.t('VIEWING.DUPLICATE') });
     }
 
     const viewingRequest = await ViewingRequest.create({
@@ -37,12 +37,12 @@ exports.createViewingRequest = async (req, res, next) => {
     // Notify property owner
     await createNotification(req.io, property.owner, {
       type:    'viewing',
-      title:   'New viewing request',
-      message: `${req.user.name} wants to view your property "${property.title}"`,
+      title:   req.t('NOTIFICATION.NEW_VIEWING'),
+      message: req.t('NOTIFICATION.NEW_VIEWING_MSG', { name: req.user.name, property: property.title }),
       link:    `/viewing-requests/${viewingRequest._id}`,
     }).catch(() => {});
 
-    res.status(201).json({ status: 'success', message: 'Viewing request sent successfully', data: { viewingRequest } });
+    res.status(201).json({ status: 'success', message: req.t('VIEWING.SENT'), data: { viewingRequest } });
   } catch (err) {
     next(err);
   }
@@ -73,27 +73,30 @@ exports.updateStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
     if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ status: 'fail', message: 'Status must be approved or rejected' });
+      return res.status(400).json({ status: 'fail', message: req.t('VIEWING.STATUS_INVALID') });
     }
 
     const viewingRequest = await ViewingRequest.findById(req.params.id).lean()
       .populate('requester', 'email name').populate('property', 'title');
-    if (!viewingRequest) return res.status(404).json({ status: 'fail', message: 'Viewing request not found' });
+    if (!viewingRequest) return res.status(404).json({ status: 'fail', message: req.t('VIEWING.NOT_FOUND') });
     if (viewingRequest.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ status: 'fail', message: 'You are not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
 
     viewingRequest.status = status;
     await viewingRequest.save();
 
     // Notify requester
+    const notifTitle = status === 'approved'
+      ? req.t('NOTIFICATION.VIEWING_APPROVED')
+      : req.t('NOTIFICATION.VIEWING_REJECTED');
     const notifMsg = status === 'approved'
-      ? `تمت الموافقة على طلب معاينة "${viewingRequest.property?.title}"`
-      : `تم رفض طلب معاينة "${viewingRequest.property?.title}"`;
+      ? req.t('NOTIFICATION.VIEWING_APPROVED_MSG', { property: viewingRequest.property?.title })
+      : req.t('NOTIFICATION.VIEWING_REJECTED_MSG', { property: viewingRequest.property?.title });
 
     await createNotification(req.io, viewingRequest.requester._id, {
       type:    'viewing',
-      title:   status === 'approved' ? 'تمت الموافقة على طلب المعاينة' : 'تم رفض طلب المعاينة',
+      title:   notifTitle,
       message: notifMsg,
       link:    `/viewing-requests/${viewingRequest._id}`,
     }).catch(() => {});
@@ -108,7 +111,11 @@ exports.updateStatus = async (req, res, next) => {
       }).catch((e) => logger.warn(`[ViewingRequest] Email error: ${e.message}`));
     }
 
-    res.status(200).json({ status: 'success', message: `تم ${status === 'approved' ? 'قبول' : 'رفض'} الطلب`, data: { viewingRequest } });
+    res.status(200).json({
+      status: 'success',
+      message: status === 'approved' ? req.t('VIEWING.APPROVED') : req.t('VIEWING.REJECTED'),
+      data: { viewingRequest },
+    });
   } catch (err) {
     next(err);
   }
@@ -117,16 +124,16 @@ exports.updateStatus = async (req, res, next) => {
 exports.cancelViewingRequest = async (req, res, next) => {
   try {
     const viewingRequest = await ViewingRequest.findById(req.params.id);
-    if (!viewingRequest) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+    if (!viewingRequest) return res.status(404).json({ status: 'fail', message: req.t('VIEWING.NOT_FOUND') });
     if (viewingRequest.requester.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ status: 'fail', message: 'غير مصرح لك' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
     if (viewingRequest.status !== 'pending') {
-      return res.status(400).json({ status: 'fail', message: 'لا يمكن إلغاء طلب تمت معالجته' });
+      return res.status(400).json({ status: 'fail', message: req.t('VIEWING.CANNOT_CANCEL_PROCESSED') });
     }
     viewingRequest.status = 'cancelled';
     await viewingRequest.save();
-    res.status(200).json({ status: 'success', message: 'تم إلغاء الطلب', data: { viewingRequest } });
+    res.status(200).json({ status: 'success', message: req.t('VIEWING.CANCELLED'), data: { viewingRequest } });
   } catch (err) {
     next(err);
   }

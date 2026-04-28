@@ -25,7 +25,7 @@ exports.initiatePayment = async (req, res, next) => {
     if (!bookingId) {
       return res.status(400).json({
         status: 'fail',
-        message: 'bookingId is required',
+        message: req.t('PAYMENT.BOOKING_ID_REQUIRED'),
       });
     }
 
@@ -33,7 +33,7 @@ exports.initiatePayment = async (req, res, next) => {
     if (!validMethods.includes(paymentMethod)) {
       return res.status(400).json({
         status: 'fail',
-        message: `Invalid payment method. Must be one of: ${validMethods.join(', ')}`,
+        message: req.t('PAYMENT.INVALID_METHOD', { methods: validMethods.join(', ') }),
       });
     }
 
@@ -48,7 +48,7 @@ exports.initiatePayment = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'Payment initiated',
+      message: req.t('PAYMENT.INITIATED'),
       data: result,
     });
   } catch (err) {
@@ -105,7 +105,7 @@ exports.refundPayment = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'Payment refunded',
+      message: req.t('PAYMENT.REFUNDED'),
       data: result,
     });
   } catch (err) {
@@ -124,7 +124,7 @@ exports.verifyPayment = async (req, res, next) => {
     if (!paymentId) {
       return res.status(400).json({
         status: 'fail',
-        message: 'paymentId is required',
+        message: req.t('PAYMENT.PAYMENT_ID_REQUIRED'),
       });
     }
 
@@ -132,7 +132,7 @@ exports.verifyPayment = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'Payment verified',
+      message: req.t('PAYMENT.VERIFIED'),
       data: result,
     });
   } catch (err) {

@@ -11,13 +11,13 @@ exports.submitReport = asyncHandler(async (req, res, next) => {
   const existing = await Report.findOne({
     reporter: req.user._id, targetType, targetId, status: { $in: ['pending', 'reviewed'] },
   });
-  if (existing) return next(new AppError('You have already reported this content', 409));
+  if (existing) return next(new AppError(req.t('REPORT.ALREADY_REPORTED'), 409));
 
   const report = await Report.create({
     reporter: req.user._id, targetType, targetId, reason, description,
   });
 
-  res.status(201).json({ status: 'success', message: 'Report submitted successfully and will be reviewed soon', data: { report } });
+  res.status(201).json({ status: 'success', message: req.t('REPORT.SUBMITTED'), data: { report } });
 });
 
 // ─── Get All Reports (Admin) ──────────────────────────────────
@@ -40,7 +40,7 @@ exports.getAllReports = asyncHandler(async (req, res) => {
 exports.reviewReport = asyncHandler(async (req, res, next) => {
   const { status, adminNote } = req.body;
   const validStatuses = ['reviewed', 'resolved', 'dismissed'];
-  if (!validStatuses.includes(status)) return next(new AppError('Invalid status', 400));
+  if (!validStatuses.includes(status)) return next(new AppError(req.t('REPORT.INVALID_STATUS'), 400));
 
   const report = await Report.findByIdAndUpdate(
     req.params.id,
@@ -48,13 +48,13 @@ exports.reviewReport = asyncHandler(async (req, res, next) => {
     { new: true }
   ).populate('reporter', '_id name');
 
-  if (!report) return next(new AppError('Report not found', 404));
+  if (!report) return next(new AppError(req.t('REPORT.NOT_FOUND'), 404));
 
   // Notify reporter about the report result
   await createNotification(req.io, report.reporter._id, {
     type:    'system',
-    title:   'Your report has been reviewed',
-    message: `Your report has been ${status === 'resolved' ? 'resolved' : status === 'dismissed' ? 'dismissed' : 'reviewed'}`,
+    title:   req.t('NOTIFICATION.REPORT_REVIEWED'),
+    message: req.t('NOTIFICATION.REPORT_REVIEWED_MSG', { status }),
     link:    '/reports',
   }).catch(() => {});
 

@@ -1,6 +1,7 @@
 const User = require('../models/user.model');
 const RefreshToken = require('../models/refreshToken.model');
 const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 // Fields that must never be returned to any client — not even admins
 const SAFE_USER_PROJECTION = '-bankAccounts.ibanEncrypted -loginAttempts -lockUntil -__v';
@@ -36,7 +37,7 @@ exports.getUser = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.params.id)
     .select(SAFE_USER_PROJECTION)
     .lean();
-  if (!user) return res.status(404).json({ status: 'fail', message: 'User not found' });
+  if (!user) return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
   res.status(200).json({ status: 'success', data: { user } });
 });
 
@@ -159,7 +160,7 @@ exports.changePassword = asyncHandler(async (req, res) => {
   // comparePassword is async (bcrypt.compare) — must be awaited
   const isMatch = await user.comparePassword(currentPassword);
   if (!isMatch) {
-    return res.status(400).json({ status: 'fail', message: 'Current password is incorrect' });
+    return res.status(400).json({ status: 'fail', message: req.t('AUTH.CURRENT_PASSWORD_INCORRECT') });
   }
 
   user.password = newPassword;
@@ -191,7 +192,7 @@ exports.changePassword = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     status: 'success',
-    message: 'Password changed successfully',
+    message: req.t('AUTH.PASSWORD_CHANGED'),
     token: accessToken,
   });
 });
@@ -199,7 +200,7 @@ exports.changePassword = asyncHandler(async (req, res) => {
 // ─── Delete User (Admin) ──────────────────────────────────────
 exports.deleteUser = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.params.id);
-  if (!user) return next(require('../utils/AppError')('User not found', 404));
+  if (!user) return next(new AppError(req.t('AUTH.USER_NOT_FOUND'), 404));
 
   // Revoke all user tokens before deletion
   await RefreshToken.deleteMany({ userId: user._id });

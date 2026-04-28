@@ -13,22 +13,22 @@ exports.createBooking = async (req, res, next) => {
     const parsedEnd   = new Date(end_date);
 
     if (parsedStart >= parsedEnd) {
-      return res.status(400).json({ status: 'fail', message: 'start_date must be before end_date' });
+      return res.status(400).json({ status: 'fail', message: req.t('BOOKING.START_BEFORE_END') });
     }
     if (parsedStart < new Date()) {
-      return res.status(400).json({ status: 'fail', message: 'Start date cannot be in the past' });
+      return res.status(400).json({ status: 'fail', message: req.t('BOOKING.START_NOT_PAST') });
     }
 
     // FIX #6 — Check property existence and status before creating booking
     const property = await Property.findById(propertyId);
     if (!property) {
-      return res.status(404).json({ status: 'fail', message: 'Property not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
     }
     if (property.status !== 'available') {
-      return res.status(400).json({ status: 'fail', message: 'Property is not available for booking right now' });
+      return res.status(400).json({ status: 'fail', message: req.t('PROPERTY.NOT_AVAILABLE') });
     }
     if (property.listingType !== 'rent') {
-      return res.status(400).json({ status: 'fail', message: 'هذا العقار للبيع وليس للإيجار' });
+      return res.status(400).json({ status: 'fail', message: req.t('PROPERTY.FOR_SALE_ONLY') });
     }
 
     // التحقق من عدم وجود تعارض في التواريخ
@@ -39,7 +39,7 @@ exports.createBooking = async (req, res, next) => {
       end_date:    { $gt: parsedStart },
     });
     if (conflict) {
-      return res.status(409).json({ status: 'fail', message: 'العقار محجوز في هذا النطاق الزمني' });
+      return res.status(409).json({ status: 'fail', message: req.t('BOOKING.DATE_CONFLICT') });
     }
 
     const booking = await Booking.create({
@@ -53,12 +53,12 @@ exports.createBooking = async (req, res, next) => {
     // Notify property owner
     await createNotification(req.io, property.owner, {
       type:    'booking',
-      title:   'New booking request',
-      message: `${req.user.name} requested to book your property "${property.title}"`,
+      title:   req.t('NOTIFICATION.NEW_BOOKING', { name: req.user.name, property: property.title }),
+      message: req.t('NOTIFICATION.NEW_BOOKING', { name: req.user.name, property: property.title }),
       link:    `/bookings/${booking._id}`,
     });
 
-    res.status(201).json({ status: 'success', message: 'Booking request created successfully', data: { booking } });
+    res.status(201).json({ status: 'success', message: req.t('BOOKING.CREATED'), data: { booking } });
   } catch (err) {
     next(err);
   }
@@ -81,20 +81,20 @@ exports.cancelBooking = async (req, res, next) => {
   try {
     const booking = await Booking.findOne({ _id: req.params.id, user_id: req.user._id });
     if (!booking) {
-      return res.status(404).json({ status: 'fail', message: 'الحجز غير موجود' });
+      return res.status(404).json({ status: 'fail', message: req.t('BOOKING.NOT_FOUND') });
     }
     // FIX — استخدام status بدل applied
     if (booking.status === 'approved') {
-      return res.status(400).json({ status: 'fail', message: 'لا يمكن إلغاء حجز مُعتمد' });
+      return res.status(400).json({ status: 'fail', message: req.t('BOOKING.CANNOT_CANCEL_APPROVED') });
     }
     if (booking.status === 'cancelled' || booking.status === 'rejected') {
-      return res.status(400).json({ status: 'fail', message: 'الحجز ملغي أو مرفوض بالفعل' });
+      return res.status(400).json({ status: 'fail', message: req.t('BOOKING.ALREADY_PROCESSED') });
     }
 
     booking.status = 'cancelled';
     await booking.save();
 
-    res.status(200).json({ status: 'success', message: 'تم إلغاء الحجز', data: { booking } });
+    res.status(200).json({ status: 'success', message: req.t('BOOKING.CANCELLED'), data: { booking } });
   } catch (err) {
     next(err);
   }
@@ -146,19 +146,18 @@ exports.approveBooking = async (req, res, next) => {
       // إشعار المستخدم
       await createNotification(req.io, booking.user_id._id || booking.user_id, {
         type:    'booking',
-        title:   'تم قبول حجزك',
-        message: `تم قبول حجزك للعقار "${populated.property_id.title}"`,
+        title:   req.t('NOTIFICATION.BOOKING_APPROVED'),
+        message: req.t('NOTIFICATION.BOOKING_APPROVED_MSG', { property: populated.property_id.title }),
         link:    `/bookings/${booking._id}`,
       });
     } catch (e) {
-      logger.warn(`[ApproveBooking] Email/Notification error: ${e.message}`);
+      // Log notification error but don't fail the request
+      console.error('Notification/Email Error:', e);
     }
 
-    res.status(200).json({ status: 'success', message: 'Booking approved successfully', data: { booking } });
+    res.status(200).json({ status: 'success', message: req.t('BOOKING.APPROVED'), data: { booking } });
   } catch (err) {
-    const code = err.message.includes('Not authorized') ? 403
-               : err.message.includes('not found')      ? 404 : 400;
-    res.status(code).json({ status: 'fail', message: err.message });
+    next(err);
   }
 };
 
@@ -172,20 +171,17 @@ exports.rejectBooking = async (req, res, next) => {
     try {
       await createNotification(req.io, booking.user_id, {
         type:    'booking',
-        title:   'تم رفض طلب حجزك',
-        message: 'للأسف تم رفض طلب حجزك، يمكنك البحث عن عقار آخر',
+        title:   req.t('NOTIFICATION.BOOKING_REJECTED'),
+        message: req.t('NOTIFICATION.BOOKING_REJECTED_MSG'),
         link:    '/properties',
       });
     } catch (e) {}
 
-    res.status(200).json({ status: 'success', message: 'Booking rejected successfully', data: { booking } });
+    res.status(200).json({ status: 'success', message: req.t('BOOKING.REJECTED'), data: { booking } });
   } catch (err) {
-    const code = err.message.includes('Not authorized') ? 403
-               : err.message.includes('not found')      ? 404 : 400;
-    res.status(code).json({ status: 'fail', message: err.message });
+    next(err);
   }
 };
-
 // ─── Get Single Booking ──────────────────────────────────────
 exports.getBooking = async (req, res, next) => {
   try {
@@ -194,13 +190,13 @@ exports.getBooking = async (req, res, next) => {
       .populate('user_id',     'name email phone');
 
     if (!booking) {
-      return res.status(404).json({ status: 'fail', message: 'الحجز غير موجود' });
+      return res.status(404).json({ status: 'fail', message: req.t('BOOKING.NOT_FOUND') });
     }
 
     const isUser  = booking.user_id._id.toString() === req.user._id.toString();
     const isOwner = booking.property_id?.owner?.toString() === req.user._id.toString();
     if (!isUser && !isOwner && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'غير مصرح لك' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
 
     res.status(200).json({ status: 'success', data: { booking } });

@@ -11,15 +11,15 @@
  */
 const requireKYC = (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({ status: 'fail', message: 'You must be logged in' });
+    return res.status(401).json({ status: 'fail', message: req.t('COMMON.LOGIN_REQUIRED') });
   }
 
   if (req.user.kycStatus !== 'approved') {
     return res.status(403).json({
       status: 'fail',
-      message: 'KYC verification required to perform this action',
+      message: req.t('KYC.REQUIRED'),
       kycStatus: req.user.kycStatus,
-      help: 'Please complete your KYC verification first. Visit /kyc to upload documents.',
+      help: req.t('KYC.KYC_HELP'),
       kycRejectionReason: req.user.kycRejectionReason || null,
     });
   }

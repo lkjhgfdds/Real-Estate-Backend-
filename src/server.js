@@ -51,6 +51,7 @@ const { setupSwagger } = require('./docs/swagger');
 const errorMiddleware = require('./middlewares/error.middleware');
 const requestLogger   = require('./middlewares/requestLogger.middleware');
 const { globalLimiter, authLimiter } = require('./middlewares/advancedRateLimit.middleware');
+const { i18next, i18nMiddleware } = require('./config/i18n');
 
 // ── Jobs ────────────────────────────────────────────────────
 const { initAuctionJob }     = require('./jobs/auction.job');
@@ -120,6 +121,9 @@ if (mongoSanitize) app.use(mongoSanitize());
 if (xssClean) app.use(xssClean());
 if (hpp) app.use(hpp({ whitelist: ['price','bedrooms','bathrooms','area'] }));
 
+// i18n — language detection via Accept-Language header
+app.use(i18nMiddleware.handle(i18next));
+
 // Rate limiting (disabled in tests to allow fast test execution without lockouts)
 if (process.env.NODE_ENV !== 'test') {
   app.use('/api', globalLimiter);
@@ -171,7 +175,7 @@ app.get('/', (req, res) => res.json({
 app.use((req, res) => {
   res.status(404).json({
     status: 'fail',
-    message: `Path ${req.originalUrl} not found`,
+    message: req.t('COMMON.PATH_NOT_FOUND', { path: req.originalUrl }),
   });
 });
 // Global Error Handler

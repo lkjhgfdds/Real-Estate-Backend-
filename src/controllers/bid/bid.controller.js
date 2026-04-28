@@ -12,9 +12,9 @@ exports.placeBid = asyncHandler(async (req, res, next) => {
   const { auctionId, amount } = req.body;
   const bidderId = req.user._id;
 
-  if (!auctionId) return next(new AppError('auctionId is required', 400));
+  if (!auctionId) return next(new AppError(req.t('BID.AUCTION_ID_REQUIRED'), 400));
   if (!amount || typeof amount !== 'number' || amount <= 0) {
-    return next(new AppError('Bid amount must be a positive number', 400));
+    return next(new AppError(req.t('BID.AMOUNT_POSITIVE'), 400));
   }
 
   const session = await mongoose.startSession();
@@ -33,27 +33,27 @@ exports.placeBid = asyncHandler(async (req, res, next) => {
           { $set: { updatedAt: new Date() } },
           { session, new: true }
         );
-        if (!auction) throw new AppError('Auction not found', 404);
+        if (!auction) throw new AppError(req.t('AUCTION.NOT_FOUND'), 404);
 
         const now = new Date();
         if (auction.status !== 'active' || now < auction.startDate || now > auction.endDate) {
-          throw new AppError('Auction is not active or has ended', 400);
+          throw new AppError(req.t('BID.AUCTION_NOT_ACTIVE'), 400);
         }
 
         if (!req.user.isActive || req.user.isBanned) {
-          throw new AppError('Your account is suspended and you cannot bid', 403);
+          throw new AppError(req.t('BID.ACCOUNT_SUSPENDED'), 403);
         }
 
         const minimumBid = (auction.currentBid || auction.startingPrice) + auction.bidIncrement;
         if (amount < minimumBid) {
           throw new AppError(
-            `Bid amount must be at least ${minimumBid} (current: ${auction.currentBid}, increment: ${auction.bidIncrement})`,
+            req.t('BID.MINIMUM_BID', { minimum: minimumBid, current: auction.currentBid, increment: auction.bidIncrement }),
             400
           );
         }
 
         if (auction.seller.toString() === bidderId.toString()) {
-          throw new AppError('You cannot bid on your own auction', 403);
+          throw new AppError(req.t('BID.OWN_AUCTION'), 403);
         }
 
         await Bid.updateMany(
@@ -104,19 +104,19 @@ exports.placeBid = asyncHandler(async (req, res, next) => {
   // Notify auction owner
   await createNotification(req.io, auction.seller, {
     type:    'auction',
-    title:   'New bid in your auction',
-    message: `${req.user.name} placed a bid of ${amount}`,
+    title:   req.t('NOTIFICATION.NEW_BID'),
+    message: req.t('NOTIFICATION.NEW_BID_MSG', { name: req.user.name, amount }),
     link:    `/auctions/${auctionId}`,
   }).catch(() => {});
 
-  res.status(201).json({ status: 'success', message: 'Bid placed successfully', data: { bid: populatedBid } });
+  res.status(201).json({ status: 'success', message: req.t('BID.PLACED'), data: { bid: populatedBid } });
 });
 
 // ─── Get Bids For Auction ─────────────────────────────────────
 exports.getBidsForAuction = asyncHandler(async (req, res, next) => {
   const { auctionId } = req.params;
   const auction = await Auction.findById(auctionId);
-  if (!auction) return next(new AppError('Auction not found', 404));
+  if (!auction) return next(new AppError(req.t('AUCTION.NOT_FOUND'), 404));
 
   const { data: bids, nextCursor, hasMore, count } = await cursorPaginate(Bid, {
     filter: { auction: auctionId },

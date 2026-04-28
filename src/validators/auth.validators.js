@@ -1,36 +1,40 @@
 const { body } = require('express-validator');
+const i18next = require('../config/i18n').i18next;
+
+// Helper: returns a function that resolves translation at validation-time
+const t = (key) => (value, { req }) => req.t(key);
 
 exports.registerSchema = [
-  body('name').notEmpty().withMessage('Name is required')
-    .isLength({ min: 3, max: 50 }).withMessage('Name must be between 3 and 50 characters'),
-  body('email').notEmpty().withMessage('Email is required')
-    .isEmail().withMessage('Invalid email address').normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required')
-    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('name').notEmpty().withMessage(t('VALIDATION.NAME_REQUIRED'))
+    .isLength({ min: 3, max: 50 }).withMessage(t('VALIDATION.NAME_LENGTH')),
+  body('email').notEmpty().withMessage(t('VALIDATION.EMAIL_REQUIRED'))
+    .isEmail().withMessage(t('VALIDATION.EMAIL_INVALID')).normalizeEmail(),
+  body('password').notEmpty().withMessage(t('VALIDATION.PASSWORD_REQUIRED'))
+    .isLength({ min: 8 }).withMessage(t('VALIDATION.PASSWORD_MIN')),
   body('phone').optional()
-    .matches(/^[0-9+\-\s]{7,15}$/).withMessage('Invalid phone number'),
+    .matches(/^[0-9+\-\s]{7,15}$/).withMessage(t('VALIDATION.PHONE_INVALID')),
   // ✅ SECURITY FIX: Role NOT accepted during registration
   // Server controls role assignment - prevents privilege escalation
   // Users cannot inject 'agent' or other roles during signup
 ];
 
 exports.loginSchema = [
-  body('email').notEmpty().withMessage('Email is required')
-    .isEmail().withMessage('Invalid email address'),
-  body('password').notEmpty().withMessage('Password is required'),
+  body('email').notEmpty().withMessage(t('VALIDATION.EMAIL_REQUIRED'))
+    .isEmail().withMessage(t('VALIDATION.EMAIL_INVALID')),
+  body('password').notEmpty().withMessage(t('VALIDATION.PASSWORD_REQUIRED')),
 ];
 
 exports.updateUserRoleSchema = [
-  body('userId').notEmpty().isMongoId().withMessage('Invalid user ID'),
-  body('newRole').notEmpty().isIn(['buyer', 'owner', 'agent']).withMessage('Role must be: buyer, owner, or agent'),
+  body('userId').notEmpty().isMongoId().withMessage(t('VALIDATION.USER_ID_INVALID')),
+  body('newRole').notEmpty().isIn(['buyer', 'owner', 'agent']).withMessage(t('VALIDATION.ROLE_INVALID')),
 ];
 
 exports.changePasswordSchema = [
-  body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').notEmpty().withMessage('New password is required')
-    .isLength({ min: 8 }).withMessage('New password must be at least 8 characters')
+  body('currentPassword').notEmpty().withMessage(t('VALIDATION.CURRENT_PASSWORD_REQUIRED')),
+  body('newPassword').notEmpty().withMessage(t('VALIDATION.NEW_PASSWORD_REQUIRED'))
+    .isLength({ min: 8 }).withMessage(t('VALIDATION.NEW_PASSWORD_MIN'))
     .custom((val, { req }) => {
-      if (val === req.body.currentPassword) throw new Error('New password must be different from current password');
+      if (val === req.body.currentPassword) throw new Error(req.t('VALIDATION.NEW_PASSWORD_SAME'));
       return true;
     }),
 ];

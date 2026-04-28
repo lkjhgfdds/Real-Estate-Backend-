@@ -13,27 +13,27 @@ exports.createAuction = asyncHandler(async (req, res, next) => {
   const { property, startingPrice, bidIncrement, startDate, endDate } = req.body;
 
   if (!property || !startingPrice || !startDate || !endDate) {
-    return next(new AppError('property, startingPrice, startDate, endDate are required', 400));
+    return next(new AppError(req.t('AUCTION.FIELDS_REQUIRED'), 400));
   }
 
   const parsedStart = new Date(startDate);
   const parsedEnd   = new Date(endDate);
 
   if (isNaN(parsedStart) || isNaN(parsedEnd)) {
-    return next(new AppError('Invalid date format', 400));
+    return next(new AppError(req.t('AUCTION.INVALID_DATE'), 400));
   }
   if (parsedStart >= parsedEnd) {
-    return next(new AppError('startDate must be before endDate', 400));
+    return next(new AppError(req.t('AUCTION.START_BEFORE_END'), 400));
   }
   if (parsedStart < new Date()) {
-    return next(new AppError('startDate must be in the future', 400));
+    return next(new AppError(req.t('AUCTION.START_IN_FUTURE'), 400));
   }
 
   // Check property ownership
   const prop = await Property.findById(property);
-  if (!prop) return next(new AppError('Property not found', 404));
+  if (!prop) return next(new AppError(req.t('PROPERTY.NOT_FOUND'), 404));
   if (prop.owner.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-    return next(new AppError('You do not have permission to create an auction for this property', 403));
+    return next(new AppError(req.t('AUCTION.NO_PERMISSION_CREATE'), 403));
   }
 
   const existingAuction = await Auction.findOne({
@@ -41,7 +41,7 @@ exports.createAuction = asyncHandler(async (req, res, next) => {
     status: { $in: ['upcoming', 'active'] },
   });
   if (existingAuction) {
-    return next(new AppError('This property already has an active auction', 400));
+    return next(new AppError(req.t('AUCTION.ALREADY_ACTIVE'), 400));
   }
 
   const auction = await Auction.create({
@@ -58,7 +58,7 @@ exports.createAuction = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     status:  'success',
-    message: 'Auction created successfully - awaiting admin approval',
+    message: req.t('AUCTION.CREATED'),
     data:    { auction },
   });
 });
@@ -97,7 +97,7 @@ exports.getAuction = asyncHandler(async (req, res, next) => {
     .populate('seller',   'name email phone')
     .populate('winner',   'name email');
 
-  if (!auction) return next(new AppError('Auction not found', 404));
+  if (!auction) return next(new AppError(req.t('AUCTION.NOT_FOUND'), 404));
 
   // FIX — Get real count from countDocuments instead of limit(20)
   const bidsCount = await Bid.countDocuments({ auction: req.params.id });
@@ -115,13 +115,13 @@ exports.getAuction = asyncHandler(async (req, res, next) => {
 // ─── Update Auction ───────────────────────────────────────────
 exports.updateAuction = asyncHandler(async (req, res, next) => {
   const auction = await Auction.findById(req.params.id);
-  if (!auction) return next(new AppError('Auction not found', 404));
+  if (!auction) return next(new AppError(req.t('AUCTION.NOT_FOUND'), 404));
 
   if (auction.seller.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-    return next(new AppError('You do not have permission to edit this auction', 403));
+    return next(new AppError(req.t('AUCTION.NO_PERMISSION_EDIT'), 403));
   }
   if (auction.status !== 'upcoming') {
-    return next(new AppError('Cannot edit auction after it has started', 400));
+    return next(new AppError(req.t('AUCTION.CANNOT_EDIT_STARTED'), 400));
   }
 
   const allowed = ['startingPrice', 'bidIncrement', 'startDate', 'endDate'];
@@ -131,9 +131,9 @@ exports.updateAuction = asyncHandler(async (req, res, next) => {
   if (updates.startDate || updates.endDate) {
     const newStart = updates.startDate ? new Date(updates.startDate) : auction.startDate;
     const newEnd   = updates.endDate   ? new Date(updates.endDate)   : auction.endDate;
-    if (isNaN(newStart) || isNaN(newEnd)) return next(new AppError('Invalid date format', 400));
-    if (newStart >= newEnd)  return next(new AppError('startDate must be before endDate', 400));
-    if (newStart < new Date()) return next(new AppError('startDate must be in the future', 400));
+    if (isNaN(newStart) || isNaN(newEnd)) return next(new AppError(req.t('AUCTION.INVALID_DATE'), 400));
+    if (newStart >= newEnd)  return next(new AppError(req.t('AUCTION.START_BEFORE_END'), 400));
+    if (newStart < new Date()) return next(new AppError(req.t('AUCTION.START_IN_FUTURE'), 400));
     updates.startDate = newStart;
     updates.endDate   = newEnd;
   }
@@ -144,35 +144,35 @@ exports.updateAuction = asyncHandler(async (req, res, next) => {
     new: true, runValidators: true,
   }).populate('property', 'title location images price');
 
-  res.status(200).json({ status: 'success', message: 'Auction updated successfully', data: { auction: updated } });
+  res.status(200).json({ status: 'success', message: req.t('AUCTION.UPDATED'), data: { auction: updated } });
 });
 
 // ─── Delete Auction ───────────────────────────────────────────
 exports.deleteAuction = asyncHandler(async (req, res, next) => {
   const auction = await Auction.findById(req.params.id);
-  if (!auction) return next(new AppError('Auction not found', 404));
+  if (!auction) return next(new AppError(req.t('AUCTION.NOT_FOUND'), 404));
 
   const isOwner = auction.seller.toString() === req.user._id.toString();
   if (!isOwner && req.user.role !== 'admin') {
-    return next(new AppError('You do not have permission to delete this auction', 403));
+    return next(new AppError(req.t('AUCTION.NO_PERMISSION_DELETE'), 403));
   }
   if (auction.status === 'active') {
     const hasBids = await Bid.exists({ auction: req.params.id });
-    if (hasBids) return next(new AppError('Cannot delete an active auction with bids', 400));
+    if (hasBids) return next(new AppError(req.t('AUCTION.CANNOT_DELETE_ACTIVE'), 400));
   }
 
   await Auction.findByIdAndDelete(req.params.id);
   await Bid.deleteMany({ auction: req.params.id });
 
-  res.status(200).json({ status: 'success', message: 'Auction deleted successfully', data: null });
+  res.status(200).json({ status: 'success', message: req.t('AUCTION.DELETED'), data: null });
 });
 
 // ─── Close Auction ────────────────────────────────────────────
 exports.closeAuction = asyncHandler(async (req, res, next) => {
   const auction = await Auction.findById(req.params.id);
-  if (!auction) return next(new AppError('Auction not found', 404));
-  if (auction.status === 'closed')    return next(new AppError('Auction is already closed', 400));
-  if (auction.status === 'cancelled') return next(new AppError('Auction is cancelled and cannot be closed', 400));
+  if (!auction) return next(new AppError(req.t('AUCTION.NOT_FOUND'), 404));
+  if (auction.status === 'closed')    return next(new AppError(req.t('AUCTION.ALREADY_CLOSED'), 400));
+  if (auction.status === 'cancelled') return next(new AppError(req.t('AUCTION.CANCELLED_NO_CLOSE'), 400));
 
   const winningBid = await Bid.findOne({ auction: req.params.id, isWinning: true })
     .populate('bidder', 'name email');
@@ -200,15 +200,17 @@ exports.closeAuction = asyncHandler(async (req, res, next) => {
 
     await createNotification(req.io, winner._id, {
       type:    'auction',
-      title:   '🎉 مبروك! لقد فزت في المزاد',
-      message: `فزت في مزاد "${closed.property?.title}" بقيمة ${finalBid}`,
+      title:   req.t('NOTIFICATION.AUCTION_WON'),
+      message: req.t('NOTIFICATION.AUCTION_WON_MSG', { property: closed.property?.title, amount: finalBid }),
       link:    `/auctions/${req.params.id}`,
     }).catch(() => {});
   }
 
   res.status(200).json({
     status:  'success',
-    message: winner ? `تم إغلاق المزاد — الفائز: ${winner.name} بقيمة ${finalBid}` : 'تم إغلاق المزاد بدون عطاءات',
+    message: winner
+      ? req.t('AUCTION.CLOSED_WITH_WINNER', { winner: winner.name, amount: finalBid })
+      : req.t('AUCTION.CLOSED_NO_BIDS'),
     data:    { auction: closed, winner, finalBid },
   });
 });
@@ -249,15 +251,15 @@ exports.approveAuction = asyncHandler(async (req, res, next) => {
     { new: true }
   ).populate('property', 'title location images price');
 
-  if (!auction) return next(new AppError('المزاد غير موجود', 404));
+  if (!auction) return next(new AppError(req.t('AUCTION.NOT_FOUND'), 404));
 
   // إشعار صاحب المزاد
   await createNotification(req.io, auction.seller, {
     type:    'auction',
-    title:   'تمت الموافقة على مزادك',
-    message: `تمت الموافقة على مزاد "${auction.property?.title}" وسيبدأ في موعده`,
+    title:   req.t('NOTIFICATION.AUCTION_APPROVED_TITLE'),
+    message: req.t('NOTIFICATION.AUCTION_APPROVED_MSG', { property: auction.property?.title }),
     link:    `/auctions/${auction._id}`,
   }).catch(() => {});
 
-  res.status(200).json({ status: 'success', message: 'تمت الموافقة على المزاد', data: { auction } });
+  res.status(200).json({ status: 'success', message: req.t('AUCTION.APPROVED'), data: { auction } });
 });

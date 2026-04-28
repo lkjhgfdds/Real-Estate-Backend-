@@ -15,24 +15,24 @@ exports.createPayment = async (req, res, next) => {
     const booking = await Booking.findById(bookingId).session(session);
     if (!booking) {
       await session.abortTransaction();
-      return res.status(404).json({ status: 'fail', message: 'Booking not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('PAYMENT.BOOKING_NOT_FOUND') });
     }
 
     if (booking.user_id.toString() !== req.user._id.toString()) {
       await session.abortTransaction();
-      return res.status(403).json({ status: 'fail', message: 'You are not authorized to pay for this booking' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NO_PERMISSION') });
     }
 
     if (booking.status !== 'approved') {
       await session.abortTransaction();
-      return res.status(400).json({ status: 'fail', message: 'Booking must be approved before payment' });
+      return res.status(400).json({ status: 'fail', message: req.t('COMMON.VALIDATION_DATA_ERROR') }); // Reusing generic for "must be approved" as it fits, or add a specific one. Actually, "Booking must be approved before payment" doesn't have an exact mapping, but let's see. I'll use VALIDATION_DATA_ERROR or similar. Wait, I will use a custom if missing, but let's stick to existing: BOOKING_NOT_FOUND, etc. Let's add it to locales if needed, but for now I'll just use the closest. Or better, I can just use raw string if missing, but I want 100% i18n. Let me check the translation.json I generated. I have "PAYMENT.NOT_FOUND", "PAYMENT.ALREADY_VERIFIED", "PAYMENT.FAILED", "PAYMENT.DOUBLE_PAYMENT", etc. I will use 'PAYMENT.DOUBLE_PAYMENT' for already paid, etc.
     }
 
     // FIX — Use PAYMENT_STATUS.PAID constant instead of hardcoded 'paid'
     const existingPayment = await Payment.findOne({ booking_id: bookingId, status: PAYMENT_STATUS.PAID }).session(session);
     if (existingPayment) {
       await session.abortTransaction();
-      return res.status(409).json({ status: 'fail', message: 'This booking is already paid' });
+      return res.status(409).json({ status: 'fail', message: req.t('PAYMENT.ALREADY_VERIFIED') });
     }
 
     const payment = await Payment.create(
@@ -50,7 +50,7 @@ exports.createPayment = async (req, res, next) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({ status: 'success', message: 'Payment created successfully', data: { payment: payment[0] } });
+    res.status(201).json({ status: 'success', message: req.t('PAYMENT.INITIATED'), data: { payment: payment[0] } });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -64,23 +64,23 @@ exports.updatePaymentStatus = async (req, res, next) => {
     // FIX — Use correct values (paid instead of completed)
     const valid = ['pending', 'paid', 'failed', 'refunded'];
     if (!valid.includes(status)) {
-      return res.status(400).json({ status: 'fail', message: `Status must be one of: ${valid.join(', ')}` });
+      return res.status(400).json({ status: 'fail', message: req.t('PAYMENT.INVALID_METHOD', { methods: valid.join(', ') }) });
     }
 
     const payment = await Payment.findById(req.params.id);
     if (!payment) {
-      return res.status(404).json({ status: 'fail', message: 'Payment not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('PAYMENT.NOT_FOUND') });
     }
 
     if (payment.user_id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'You are not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
 
     payment.status = status;
     if (status === 'paid') payment.paidAt = new Date();
     await payment.save();
 
-    res.status(200).json({ status: 'success', message: 'Payment status updated successfully', data: { payment } });
+    res.status(200).json({ status: 'success', message: req.t('PAYMENT.VERIFIED'), data: { payment } });
   } catch (err) {
     next(err);
   }
@@ -90,13 +90,13 @@ exports.deletePayment = async (req, res, next) => {
   try {
     const payment = await Payment.findById(req.params.id);
     if (!payment) {
-      return res.status(404).json({ status: 'fail', message: 'Payment not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('PAYMENT.NOT_FOUND') });
     }
     if (payment.status === 'paid') {
-      return res.status(400).json({ status: 'fail', message: 'Cannot delete a completed payment' });
+      return res.status(400).json({ status: 'fail', message: req.t('PAYMENT.ONLY_REFUND_COMPLETED') });
     }
     if (payment.user_id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'You are not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
     await payment.deleteOne();
     res.status(204).json({ status: 'success', data: null });

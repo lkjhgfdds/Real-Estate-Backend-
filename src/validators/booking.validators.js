@@ -1,20 +1,22 @@
 const { body } = require('express-validator');
 
+const t = (key) => (value, { req }) => req.t(key);
+
 exports.createBookingSchema = [
-  body('propertyId').notEmpty().withMessage('Property ID is required')
-    .isMongoId().withMessage('Invalid property ID'),
-  body('start_date').notEmpty().withMessage('Start date is required')
-    .isISO8601().withMessage('Invalid start date')
-    .custom((val) => {
-      if (new Date(val) < new Date()) throw new Error('Start date cannot be in the past');
+  body('propertyId').notEmpty().withMessage(t('VALIDATION.PROPERTY_ID_REQUIRED'))
+    .isMongoId().withMessage(t('VALIDATION.PROPERTY_ID_INVALID')),
+  body('start_date').notEmpty().withMessage(t('VALIDATION.START_DATE_REQUIRED'))
+    .isISO8601().withMessage(t('VALIDATION.START_DATE_INVALID'))
+    .custom((val, { req }) => {
+      if (new Date(val) < new Date()) throw new Error(req.t('VALIDATION.START_DATE_PAST'));
       return true;
     }),
-  body('end_date').notEmpty().withMessage('End date is required')
-    .isISO8601().withMessage('Invalid end date')
+  body('end_date').notEmpty().withMessage(t('VALIDATION.END_DATE_REQUIRED'))
+    .isISO8601().withMessage(t('VALIDATION.END_DATE_INVALID'))
     .custom((end, { req }) => {
-      if (new Date(end) <= new Date(req.body.start_date)) throw new Error('End date must be after start date');
+      if (new Date(end) <= new Date(req.body.start_date)) throw new Error(req.t('VALIDATION.END_DATE_AFTER_START'));
       return true;
     }),
-  body('amount').notEmpty().withMessage('Amount is required')
-    .isFloat({ min: 0 }).withMessage('Amount cannot be negative'),
+  body('amount').notEmpty().withMessage(t('VALIDATION.AMOUNT_REQUIRED'))
+    .isFloat({ min: 0 }).withMessage(t('VALIDATION.AMOUNT_MIN')),
 ];

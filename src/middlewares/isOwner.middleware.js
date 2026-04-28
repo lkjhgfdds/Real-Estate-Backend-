@@ -3,13 +3,13 @@ const Booking  = require('../models/booking.model');
 
 exports.isOwner = async (req, res, next) => {
   try {
-    if (!req.user) return res.status(401).json({ status: 'fail', message: 'You must be logged in' });
+    if (!req.user) return res.status(401).json({ status: 'fail', message: req.t('COMMON.LOGIN_REQUIRED') });
 
-    if (!req.user.isActive) return res.status(403).json({ status: 'fail', message: 'Account is suspended' });
-    if (req.user.isBanned) return res.status(403).json({ status: 'fail', message: 'Account is banned' });
+    if (!req.user.isActive) return res.status(403).json({ status: 'fail', message: req.t('COMMON.ACCOUNT_SUSPENDED') });
+    if (req.user.isBanned) return res.status(403).json({ status: 'fail', message: req.t('COMMON.ACCOUNT_BANNED') });
 
     const property = await Property.findById(req.params.id);
-    if (!property) return res.status(404).json({ status: 'fail', message: 'Property not found' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
 
     if (req.user.role === 'admin') { 
       req.property = property; 
@@ -17,7 +17,7 @@ exports.isOwner = async (req, res, next) => {
     }
 
     if (property.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ status: 'fail', message: 'You do not have permission — not the owner of this property' });
+      return res.status(403).json({ status: 'fail', message: req.t('PROPERTY.NOT_OWNER') });
     }
 
     req.property = property;
@@ -29,14 +29,14 @@ exports.isOwner = async (req, res, next) => {
 
 exports.isBookingPropertyOwner = async (req, res, next) => {
   try {
-    if (!req.user) return res.status(401).json({ status: 'fail', message: 'You must be logged in' });
+    if (!req.user) return res.status(401).json({ status: 'fail', message: req.t('COMMON.LOGIN_REQUIRED') });
 
-    if (!req.user.isActive) return res.status(403).json({ status: 'fail', message: 'Account is suspended' });
-    if (req.user.isBanned) return res.status(403).json({ status: 'fail', message: 'Account is banned' });
+    if (!req.user.isActive) return res.status(403).json({ status: 'fail', message: req.t('COMMON.ACCOUNT_SUSPENDED') });
+    if (req.user.isBanned) return res.status(403).json({ status: 'fail', message: req.t('COMMON.ACCOUNT_BANNED') });
 
     const booking = await Booking.findById(req.params.id).populate('property_id', 'owner title');
-    if (!booking) return res.status(404).json({ status: 'fail', message: 'Booking not found' });
-    if (!booking.property_id?.owner) return res.status(400).json({ status: 'fail', message: 'Incomplete booking data' });
+    if (!booking) return res.status(404).json({ status: 'fail', message: req.t('BOOKING.NOT_FOUND') });
+    if (!booking.property_id?.owner) return res.status(400).json({ status: 'fail', message: req.t('DASHBOARD.INCOMPLETE_BOOKING') });
 
     if (req.user.role === 'admin') { 
       req.booking = booking; 
@@ -44,7 +44,7 @@ exports.isBookingPropertyOwner = async (req, res, next) => {
     }
 
     if (booking.property_id.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ status: 'fail', message: 'You do not have permission' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NO_PERMISSION') });
     }
 
     req.booking = booking;

@@ -7,9 +7,9 @@ exports.sendInquiry = async (req, res, next) => {
     const { propertyId, message } = req.body;
 
     const property = await Property.findById(propertyId);
-    if (!property) return res.status(404).json({ status: 'fail', message: 'Property not found' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
     if (property.owner.toString() === req.user._id.toString()) {
-      return res.status(400).json({ status: 'fail', message: 'You cannot send an inquiry about your own property' });
+      return res.status(400).json({ status: 'fail', message: req.t('INQUIRY.OWN_PROPERTY') });
     }
 
     const inquiry = await Inquiry.create({
@@ -27,12 +27,12 @@ exports.sendInquiry = async (req, res, next) => {
     // Notify property owner
     await createNotification(req.io, property.owner, {
       type:    'inquiry',
-      title:   'New inquiry',
-      message: `${req.user.name} sent an inquiry about your property "${property.title}"`,
+      title:   req.t('NOTIFICATION.NEW_INQUIRY'),
+      message: req.t('NOTIFICATION.NEW_INQUIRY_MSG', { name: req.user.name, property: property.title }),
       link:    `/inquiries/${inquiry._id}`,
     }).catch(() => {});
 
-    res.status(201).json({ status: 'success', message: 'Inquiry sent successfully', data: { inquiry } });
+    res.status(201).json({ status: 'success', message: req.t('INQUIRY.SENT'), data: { inquiry } });
   } catch (err) {
     next(err);
   }
@@ -41,9 +41,9 @@ exports.sendInquiry = async (req, res, next) => {
 exports.getInquiriesByProperty = async (req, res, next) => {
   try {
     const property = await Property.findById(req.params.propertyId);
-    if (!property) return res.status(404).json({ status: 'fail', message: 'Property not found' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
     if (property.owner.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'Not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
     const inquiries = await Inquiry.find({ property: req.params.propertyId })
       .populate('sender', 'name email photo').sort('-createdAt');
@@ -78,13 +78,13 @@ exports.getMySentInquiries = async (req, res, next) => {
 exports.markAsRead = async (req, res, next) => {
   try {
     const inquiry = await Inquiry.findById(req.params.id).lean();
-    if (!inquiry) return res.status(404).json({ status: 'fail', message: 'Inquiry not found' });
+    if (!inquiry) return res.status(404).json({ status: 'fail', message: req.t('INQUIRY.NOT_FOUND') });
     if (inquiry.receiver.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ status: 'fail', message: 'Not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
     inquiry.isRead = true;
     await inquiry.save();
-    res.status(200).json({ status: 'success', message: 'Marked as read successfully', data: { inquiry } });
+    res.status(200).json({ status: 'success', message: req.t('INQUIRY.MARKED_READ'), data: { inquiry } });
   } catch (err) {
     next(err);
   }
@@ -94,12 +94,12 @@ exports.markAsRead = async (req, res, next) => {
 exports.replyToInquiry = async (req, res, next) => {
   try {
     const { message } = req.body;
-    if (!message) return res.status(400).json({ status: 'fail', message: 'Message is required' });
+    if (!message) return res.status(400).json({ status: 'fail', message: req.t('INQUIRY.MESSAGE_REQUIRED') });
 
     const inquiry = await Inquiry.findById(req.params.id);
-    if (!inquiry) return res.status(404).json({ status: 'fail', message: 'Inquiry not found' });
+    if (!inquiry) return res.status(404).json({ status: 'fail', message: req.t('INQUIRY.NOT_FOUND') });
     if (inquiry.receiver.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'Not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
 
     inquiry.replies = inquiry.replies || [];
@@ -110,12 +110,12 @@ exports.replyToInquiry = async (req, res, next) => {
     // Notify sender
     await createNotification(req.io, inquiry.sender, {
       type:    'inquiry',
-      title:   'Reply to your inquiry',
-      message: 'You received a reply to your inquiry',
+      title:   req.t('NOTIFICATION.INQUIRY_REPLY'),
+      message: req.t('NOTIFICATION.INQUIRY_REPLY_MSG'),
       link:    `/inquiries/${inquiry._id}`,
     }).catch(() => {});
 
-    res.status(200).json({ status: 'success', message: 'Reply sent successfully', data: { inquiry } });
+    res.status(200).json({ status: 'success', message: req.t('INQUIRY.REPLY_SENT'), data: { inquiry } });
   } catch (err) {
     next(err);
   }
@@ -124,9 +124,9 @@ exports.replyToInquiry = async (req, res, next) => {
 exports.deleteInquiry = async (req, res, next) => {
   try {
     const inquiry = await Inquiry.findById(req.params.id);
-    if (!inquiry) return res.status(404).json({ status: 'fail', message: 'Inquiry not found' });
+    if (!inquiry) return res.status(404).json({ status: 'fail', message: req.t('INQUIRY.NOT_FOUND') });
     if (inquiry.sender.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'Not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
     await inquiry.deleteOne();
     res.status(204).json({ status: 'success', data: null });

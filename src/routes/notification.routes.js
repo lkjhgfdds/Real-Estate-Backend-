@@ -81,7 +81,7 @@ router.get('/', async (req, res, next) => {
 router.patch('/read-all', async (req, res, next) => {
   try {
     await Notification.updateMany({ userId: req.user._id, isRead: false }, { isRead: true });
-    res.status(200).json({ status: 'success', message: 'تم تحديد كل الإشعارات كمقروءة' });
+    res.status(200).json({ status: 'success', message: req.t('INQUIRY.MARKED_READ') });
   } catch (err) {
     next(err);
   }
@@ -112,7 +112,7 @@ router.patch('/:id/read', async (req, res, next) => {
       { isRead: true },
       { new: true }
     );
-    if (!notif) return res.status(404).json({ status: 'fail', message: 'الإشعار غير موجود' });
+    if (!notif) return res.status(404).json({ status: 'fail', message: req.t('COMMON.PATH_NOT_FOUND', { path: 'notification' }) });
     res.status(200).json({ status: 'success', data: { notification: notif } });
   } catch (err) {
     next(err);

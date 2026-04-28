@@ -20,9 +20,23 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      // Required only for local auth — Google users have no password
+      required: function () { return this.authProvider === 'local'; },
       minlength: 8,
       select: false,
+    },
+
+    // ── OAuth ──────────────────────────────────────────────
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,   // allows multiple null values (only one index per googleId)
+      select: false,
+    },
+    authProvider: {
+      type: String,
+      enum: { values: ['local', 'google'], message: 'Invalid auth provider' },
+      default: 'local',
     },
 
     phone:{ type: String, default: null },
@@ -116,7 +130,8 @@ userSchema.index({ kycSubmittedAt: 1 });
 //  Hash Password
 
 userSchema.pre('save', async function () {
-  if (!this.isModified('password')) return;
+  // Skip hashing if password not set (Google users) or not modified
+  if (!this.password || !this.isModified('password')) return;
 
   this.password = await bcrypt.hash(this.password, 12);
 

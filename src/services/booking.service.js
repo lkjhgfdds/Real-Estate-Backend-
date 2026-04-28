@@ -1,18 +1,19 @@
 const Booking  = require('../models/booking.model');
 const Property = require('../models/property.model');
+const AppError = require('../utils/AppError');
 
 // FIX — Check authorization: userId and role are required
 const approveBookingService = async (bookingId, userId, role) => {
   const booking = await Booking.findById(bookingId).populate('property_id');
-  if (!booking) throw new Error('Booking not found');
-  if (booking.status === 'rejected') throw new Error('Cannot accept a rejected booking');
-  if (booking.status === 'approved') throw new Error('Booking is already approved');
-  if (booking.status === 'cancelled') throw new Error('Cannot accept a cancelled booking');
+  if (!booking) throw new AppError('BOOKING.NOT_FOUND', 404);
+  if (booking.status === 'rejected') throw new AppError('BOOKING.ALREADY_PROCESSED', 400);
+  if (booking.status === 'approved') throw new AppError('BOOKING.ALREADY_PROCESSED', 400);
+  if (booking.status === 'cancelled') throw new AppError('BOOKING.ALREADY_PROCESSED', 400);
 
   // FIX — Check that user is the property owner
   const isOwner = booking.property_id?.owner?.toString() === userId?.toString();
   if (role !== 'admin' && !isOwner) {
-    throw new Error('Not authorized — you are not the owner of this property');
+    throw new AppError('COMMON.NOT_AUTHORIZED', 403);
   }
 
   booking.status = 'approved';
@@ -22,12 +23,12 @@ const approveBookingService = async (bookingId, userId, role) => {
 
 const rejectBookingService = async (bookingId, userId, role) => {
   const booking = await Booking.findById(bookingId).populate('property_id');
-  if (!booking) throw new Error('Booking not found');
-  if (booking.status === 'cancelled') throw new Error('Cannot reject a cancelled booking');
+  if (!booking) throw new AppError('BOOKING.NOT_FOUND', 404);
+  if (booking.status === 'cancelled') throw new AppError('BOOKING.ALREADY_PROCESSED', 400);
 
   const isOwner = booking.property_id?.owner?.toString() === userId?.toString();
   if (role !== 'admin' && !isOwner) {
-    throw new Error('Not authorized — you are not the owner of this property');
+    throw new AppError('COMMON.NOT_AUTHORIZED', 403);
   }
 
   booking.status = 'rejected';

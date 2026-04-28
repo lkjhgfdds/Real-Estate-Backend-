@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/auth/auth.controller');
+const authController       = require('../controllers/auth/auth.controller');
+const googleAuthController = require('../controllers/auth/google.auth.controller');
 const userController = require('../controllers/user.controller');
 const { protect } = require('../middlewares/auth.middleware');
 const restrictTo = require('../middlewares/restrictTo.middleware');
@@ -256,5 +257,60 @@ router.patch('/reset-password/:token', authController.resetPassword);
  *         description: User not found
  */
 router.patch('/admin/users/:userId/role', protect, restrictTo('admin'), validate(updateUserRoleSchema), authController.updateUserRole);
+
+/**
+ * @swagger
+ * /auth/google:
+ *   post:
+ *     tags: [🔐 Auth]
+ *     summary: Sign in / Sign up with Google
+ *     description: |
+ *       Frontend-driven OAuth flow:
+ *       1. Frontend triggers Google Sign-In (Google Identity SDK)
+ *       2. Google returns an `idToken` to the frontend
+ *       3. Frontend sends `{ idToken }` to this endpoint
+ *       4. Backend verifies token cryptographically and upserts user
+ *
+ *       **Edge cases handled:**
+ *       - New user → creates account (email auto-verified)
+ *       - Existing local user → links Google account
+ *       - Returning Google user → direct login
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [idToken]
+ *             properties:
+ *               idToken:
+ *                 type: string
+ *                 description: Google ID token from Google Sign-In SDK
+ *                 example: eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...
+ *     responses:
+ *       200:
+ *         description: Authenticated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:       { type: string, example: success }
+ *                 message:      { type: string, example: Signed in with Google successfully }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accessToken:  { type: string }
+ *                     refreshToken: { type: string }
+ *                     user:         { $ref: '#/components/schemas/User' }
+ *       400:
+ *         description: Token missing or email not verified
+ *       401:
+ *         description: Invalid or expired Google token
+ *       403:
+ *         description: Account banned or suspended
+ */
+router.post('/google', googleAuthController.googleAuth);
 
 module.exports = router;

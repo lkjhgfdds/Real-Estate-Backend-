@@ -5,15 +5,15 @@ exports.addFavorite = async (req, res, next) => {
   try {
     const { propertyId } = req.body;
     const property = await Property.findById(propertyId);
-    if (!property) return res.status(404).json({ status: 'fail', message: 'Property not found' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
 
     const favorite = await Favorite.create({ user_id: req.user._id, property_id: propertyId });
     await favorite.populate('property_id', 'title price location images avgRating');
 
-    res.status(201).json({ status: 'success', message: 'Added to favorites successfully', data: { favorite } });
+    res.status(201).json({ status: 'success', message: req.t('FAVORITE.ADDED'), data: { favorite } });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({ status: 'fail', message: 'Property already in favorites' });
+      return res.status(409).json({ status: 'fail', message: req.t('FAVORITE.ALREADY_EXISTS') });
     }
     next(err);
   }
@@ -42,8 +42,8 @@ exports.removeFavorite = async (req, res, next) => {
       user_id:     req.user._id,
       property_id: req.params.propertyId,
     });
-    if (!deleted) return res.status(404).json({ status: 'fail', message: 'Property not found in favorites' });
-    res.status(200).json({ status: 'success', message: 'Removed from favorites successfully' });
+    if (!deleted) return res.status(404).json({ status: 'fail', message: req.t('FAVORITE.NOT_FOUND') });
+    res.status(200).json({ status: 'success', message: req.t('FAVORITE.REMOVED') });
   } catch (err) {
     next(err);
   }

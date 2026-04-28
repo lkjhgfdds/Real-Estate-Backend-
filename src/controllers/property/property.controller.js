@@ -68,7 +68,7 @@ exports.getProperty = asyncHandler(async (req, res, next) => {
     })
     .lean();
 
-  if (!property) return next(new AppError('Property not found', 404));
+  if (!property) return next(new AppError(req.t('PROPERTY.NOT_FOUND'), 404));
 
   // Check if the authenticated user has favourited this property
   let isFavorited = false;
@@ -86,13 +86,13 @@ exports.getProperty = asyncHandler(async (req, res, next) => {
 // ─── Update Property ──────────────────────────────────────────────────────────
 exports.updateProperty = asyncHandler(async (req, res, next) => {
   const propertyToUpdate = await Property.findById(req.params.id);
-  if (!propertyToUpdate) return next(new AppError('Property not found', 404));
+  if (!propertyToUpdate) return next(new AppError(req.t('PROPERTY.NOT_FOUND'), 404));
 
   if (
     propertyToUpdate.owner.toString() !== req.user._id.toString() &&
     req.user.role !== 'admin'
   ) {
-    return next(new AppError('You are not authorized to modify this property', 403));
+    return next(new AppError(req.t('COMMON.NOT_AUTHORIZED'), 403));
   }
 
   const updates = { ...req.body };
@@ -118,13 +118,13 @@ exports.updateProperty = asyncHandler(async (req, res, next) => {
 // ─── Delete Property ──────────────────────────────────────────────────────────
 exports.deleteProperty = asyncHandler(async (req, res, next) => {
   const property = await Property.findById(req.params.id);
-  if (!property) return next(new AppError('Property not found', 404));
+  if (!property) return next(new AppError(req.t('PROPERTY.NOT_FOUND'), 404));
 
   if (
     property.owner.toString() !== req.user._id.toString() &&
     req.user.role !== 'admin'
   ) {
-    return next(new AppError('You are not authorized to modify this property', 403));
+    return next(new AppError(req.t('COMMON.NOT_AUTHORIZED'), 403));
   }
 
   // Remove images from Cloudinary (best-effort — don't fail deletion if CDN call fails)
@@ -152,9 +152,9 @@ exports.deletePropertyImage = asyncHandler(async (req, res, next) => {
   const { imageUrl } = req.body;
   const property     = req.property; // injected by isOwner middleware
 
-  if (!imageUrl) return next(new AppError('imageUrl is required', 400));
-  if (!property.images.includes(imageUrl)) return next(new AppError('Image not found', 404));
-  if (property.images.length === 1) return next(new AppError('Cannot delete the only image', 400));
+  if (!imageUrl) return next(new AppError(req.t('PROPERTY.IMAGE_REQUIRED'), 400));
+  if (!property.images.includes(imageUrl)) return next(new AppError(req.t('PROPERTY.IMAGE_NOT_FOUND'), 404));
+  if (property.images.length === 1) return next(new AppError(req.t('PROPERTY.CANNOT_DELETE_ONLY_IMAGE'), 400));
 
   // Best-effort CDN removal
   await cloudinary.uploader.destroy(publicIdFromUrl(imageUrl)).catch(() => {});
@@ -197,7 +197,7 @@ exports.getMyProperties = asyncHandler(async (req, res) => {
 exports.togglePropertyStatus = asyncHandler(async (req, res, next) => {
   const { status } = req.body;
   const valid      = ['available', 'reserved', 'sold'];
-  if (!valid.includes(status)) return next(new AppError('Invalid status', 400));
+  if (!valid.includes(status)) return next(new AppError(req.t('PROPERTY.INVALID_STATUS'), 400));
 
   const property  = req.property; // injected by isOwner middleware
   property.status = status;

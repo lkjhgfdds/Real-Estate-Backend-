@@ -35,7 +35,7 @@ exports.register = asyncHandler(async (req, res) => {
 
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    return res.status(400).json({ status: 'fail', message: 'Email already in use' });
+    return res.status(400).json({ status: 'fail', message: req.t('AUTH.EMAIL_IN_USE') });
   }
 
   // role is always forced to 'buyer' — never trust client-supplied role
@@ -58,7 +58,7 @@ exports.register = asyncHandler(async (req, res) => {
   user.password = undefined;
   res.status(201).json({
     status:  'success',
-    message: 'Registration successful. Please check your email for OTP verification.',
+    message: req.t('AUTH.REGISTER_SUCCESS'),
     data:    { user },
   });
 });
@@ -71,13 +71,13 @@ exports.updateUserRole = asyncHandler(async (req, res) => {
   if (!ALLOWED_ROLES.includes(newRole)) {
     return res.status(400).json({
       status:  'fail',
-      message: `Invalid role. Allowed roles: ${ALLOWED_ROLES.join(', ')}`,
+      message: req.t('AUTH.INVALID_ROLE', { roles: ALLOWED_ROLES.join(', ') }),
     });
   }
 
   const user = await User.findById(userId);
   if (!user) {
-    return res.status(404).json({ status: 'fail', message: 'User not found' });
+    return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
   }
 
   const oldRole = user.role;
@@ -90,7 +90,7 @@ exports.updateUserRole = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     status:  'success',
-    message: `User role updated successfully from '${oldRole}' to '${newRole}'`,
+    message: req.t('AUTH.ROLE_UPDATED', { oldRole, newRole }),
     data: {
       user: {
         _id:       user._id,
@@ -108,19 +108,19 @@ exports.verifyOTP = asyncHandler(async (req, res) => {
   const { email, otp } = req.body;
   const user = await User.findOne({ email }).select('+otpHash +otpExpires +otpAttempts');
 
-  if (!user) return res.status(400).json({ status: 'fail', message: 'User not found' });
-  if (user.isVerified) return res.status(400).json({ status: 'fail', message: 'Account already verified' });
+  if (!user) return res.status(400).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
+  if (user.isVerified) return res.status(400).json({ status: 'fail', message: req.t('AUTH.ACCOUNT_ALREADY_VERIFIED') });
 
   const isValidOTP = user.verifyOTP(otp);
   if (!isValidOTP) {
     await user.save({ validateBeforeSave: false });
-    return res.status(400).json({ status: 'fail', message: 'Invalid or expired OTP' });
+    return res.status(400).json({ status: 'fail', message: req.t('AUTH.INVALID_OR_EXPIRED_OTP') });
   }
 
   user.isVerified = true;
   await user.save({ validateBeforeSave: false });
 
-  res.status(200).json({ status: 'success', message: 'Email verified successfully. You can now login.' });
+  res.status(200).json({ status: 'success', message: req.t('AUTH.EMAIL_VERIFIED') });
 });
 
 // ─── Resend OTP ─────────────────────────────────────────────
@@ -128,8 +128,8 @@ exports.resendOTP = asyncHandler(async (req, res) => {
   const { email } = req.body;
   const user = await User.findOne({ email }).select('+otpHash +otpExpires +otpAttempts');
 
-  if (!user) return res.status(400).json({ status: 'fail', message: 'User not found' });
-  if (user.isVerified) return res.status(400).json({ status: 'fail', message: 'Account already verified' });
+  if (!user) return res.status(400).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
+  if (user.isVerified) return res.status(400).json({ status: 'fail', message: req.t('AUTH.ACCOUNT_ALREADY_VERIFIED') });
 
   const otp = user.createOTP();
   await user.save({ validateBeforeSave: false });
@@ -139,7 +139,7 @@ exports.resendOTP = asyncHandler(async (req, res) => {
   );
 
   // rawOTP is intentionally NOT returned in the response (security)
-  res.status(200).json({ status: 'success', message: 'OTP resent successfully' });
+  res.status(200).json({ status: 'success', message: req.t('AUTH.OTP_RESENT') });
 });
 
 // ─── Login ──────────────────────────────────────────────────
@@ -148,12 +148,12 @@ exports.login = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email })
     .select('+password +isActive +isVerified +loginAttempts +lockUntil');
-  if (!user) return res.status(401).json({ status: 'fail', message: 'Email or password is incorrect' });
+  if (!user) return res.status(401).json({ status: 'fail', message: req.t('AUTH.INVALID_CREDENTIALS') });
 
   if (user.isLocked && user.isLocked()) {
     return res.status(403).json({
       status:  'fail',
-      message: 'Account temporarily locked due to failed login attempts',
+      message: req.t('AUTH.ACCOUNT_LOCKED'),
     });
   }
 
@@ -161,11 +161,11 @@ exports.login = asyncHandler(async (req, res) => {
   if (!validPassword) {
     if (user.incLoginAttempts) user.incLoginAttempts();
     await user.save({ validateBeforeSave: false });
-    return res.status(401).json({ status: 'fail', message: 'Email or password is incorrect' });
+    return res.status(401).json({ status: 'fail', message: req.t('AUTH.INVALID_CREDENTIALS') });
   }
 
-  if (!user.isActive)   return res.status(403).json({ status: 'fail', message: 'Account is suspended' });
-  if (!user.isVerified) return res.status(403).json({ status: 'fail', message: 'Please verify your email first' });
+  if (!user.isActive)   return res.status(403).json({ status: 'fail', message: req.t('COMMON.ACCOUNT_SUSPENDED') });
+  if (!user.isVerified) return res.status(403).json({ status: 'fail', message: req.t('AUTH.VERIFY_EMAIL_FIRST') });
 
   // Reset brute-force counters
   user.loginAttempts = 0;
@@ -202,19 +202,19 @@ exports.login = asyncHandler(async (req, res) => {
 exports.refreshToken = async (req, res, next) => {
   try {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
-    if (!refreshToken) return res.status(401).json({ status: 'fail', message: 'Refresh token is required' });
+    if (!refreshToken) return res.status(401).json({ status: 'fail', message: req.t('AUTH.REFRESH_TOKEN_REQUIRED') });
 
     const decoded   = verifyRefreshToken(refreshToken);
     const tokenHash = RefreshToken.hashToken(refreshToken);
 
     const storedToken = await RefreshToken.findOne({ tokenHash, userId: decoded.id, isRevoked: false });
     if (!storedToken || storedToken.expiresAt < new Date()) {
-      return res.status(401).json({ status: 'fail', message: 'Invalid or expired refresh token' });
+      return res.status(401).json({ status: 'fail', message: req.t('AUTH.INVALID_REFRESH_TOKEN') });
     }
 
     const user = await User.findById(decoded.id);
     if (!user || !user.isActive) {
-      return res.status(401).json({ status: 'fail', message: 'User not found or banned' });
+      return res.status(401).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND_OR_BANNED') });
     }
 
     // Token rotation — revoke old, issue new
@@ -229,7 +229,7 @@ exports.refreshToken = async (req, res, next) => {
     res.status(200).json({ status: 'success', token: newAccessToken, refreshToken: newRefreshToken });
   } catch (_err) {
     // Any JWT / DB error → treat as invalid token
-    return res.status(401).json({ status: 'fail', message: 'Invalid or expired refresh token' });
+    return res.status(401).json({ status: 'fail', message: req.t('AUTH.INVALID_REFRESH_TOKEN') });
   }
 };
 
@@ -245,25 +245,25 @@ exports.logout = asyncHandler(async (req, res) => {
   }
 
   res.clearCookie('refreshToken', { path: '/' });
-  res.status(200).json({ status: 'success', message: 'Logged out successfully' });
+  res.status(200).json({ status: 'success', message: req.t('AUTH.LOGOUT_SUCCESS') });
 });
 
 // ─── Logout All Devices ──────────────────────────────────────
 exports.logoutAll = asyncHandler(async (req, res) => {
   await RefreshToken.updateMany({ userId: req.user._id }, { isRevoked: true });
   res.clearCookie('refreshToken', { path: '/' });
-  res.status(200).json({ status: 'success', message: 'Logged out from all devices successfully' });
+  res.status(200).json({ status: 'success', message: req.t('AUTH.LOGOUT_ALL_SUCCESS') });
 });
 
 // ─── Forgot Password ─────────────────────────────────────────
 exports.forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ status: 'fail', message: 'Email is required' });
+  if (!email) return res.status(400).json({ status: 'fail', message: req.t('AUTH.EMAIL_REQUIRED') });
 
   const user = await User.findOne({ email });
   // Always return 200 to prevent email enumeration
   if (!user) {
-    return res.status(200).json({ status: 'success', message: 'If email is registered, you will receive a message' });
+    return res.status(200).json({ status: 'success', message: req.t('AUTH.RESET_EMAIL_SENT') });
   }
 
   const resetToken = crypto.randomBytes(32).toString('hex');
@@ -283,7 +283,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
     throw emailError; // propagate — error middleware returns 500
   }
 
-  res.status(200).json({ status: 'success', message: 'If email is registered, you will receive a message' });
+  res.status(200).json({ status: 'success', message: req.t('AUTH.RESET_EMAIL_SENT') });
 });
 
 // ─── Reset Password ──────────────────────────────────────────
@@ -293,7 +293,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
 
   // FIX: schema min is 8, guard must match
   if (!password || password.length < 8) {
-    return res.status(400).json({ status: 'fail', message: 'Password must be at least 8 characters' });
+    return res.status(400).json({ status: 'fail', message: req.t('AUTH.PASSWORD_MIN_LENGTH') });
   }
 
   const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
@@ -302,7 +302,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     passwordResetExpiry: { $gt: Date.now() },
   });
 
-  if (!user) return res.status(400).json({ status: 'fail', message: 'Link is invalid or expired' });
+  if (!user) return res.status(400).json({ status: 'fail', message: req.t('AUTH.RESET_LINK_INVALID') });
 
   user.password            = password;
   user.passwordResetToken  = undefined;
@@ -325,7 +325,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     status:  'success',
-    message: 'Password reset successfully',
+    message: req.t('AUTH.PASSWORD_RESET_SUCCESS'),
     token:   newAccessToken,
   });
 });

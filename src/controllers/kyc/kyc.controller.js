@@ -22,7 +22,7 @@ exports.uploadKYCDocuments = async (req, res, next) => {
     if (!VALID_TYPES.includes(documentType)) {
       return res.status(400).json({
         status: 'fail',
-        message: `Invalid document type. Must be one of: ${VALID_TYPES.join(', ')}`,
+        message: req.t('KYC.INVALID_DOC_TYPE', { types: VALID_TYPES.join(', ') }),
       });
     }
 
@@ -30,13 +30,13 @@ exports.uploadKYCDocuments = async (req, res, next) => {
     if (!frontImage) {
       return res.status(400).json({
         status: 'fail',
-        message: 'frontImage URL is required',
+        message: req.t('KYC.FRONT_IMAGE_REQUIRED'),
       });
     }
 
     const user = await User.findById(req.user._id);
     if (!user) {
-      return res.status(404).json({ status: 'fail', message: 'User not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
     // Store document(s) - replace old ones when new ones submitted
@@ -58,7 +58,7 @@ exports.uploadKYCDocuments = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'KYC documents submitted successfully! Awaiting admin review.',
+      message: req.t('KYC.SUBMITTED'),
       data: {
         kycStatus: 'pending',
         submitted: true,
@@ -82,7 +82,7 @@ exports.getKYCStatus = async (req, res, next) => {
     );
 
     if (!user) {
-      return res.status(404).json({ status: 'fail', message: 'User not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
     res.status(200).json({
@@ -115,7 +115,7 @@ exports.getMyKYC = async (req, res, next) => {
     );
 
     if (!user) {
-      return res.status(404).json({ status: 'fail', message: 'User not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
     // Don't expose image URLs in documents (security)
@@ -221,13 +221,13 @@ exports.approveKYC = async (req, res, next) => {
     const user = await User.findById(req.params.userId);
 
     if (!user) {
-      return res.status(404).json({ status: 'fail', message: 'User not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
     if (user.kycStatus === 'approved') {
       return res.status(400).json({
         status: 'fail',
-        message: 'User KYC is already approved',
+        message: req.t('KYC.ALREADY_APPROVED'),
       });
     }
 
@@ -245,7 +245,7 @@ exports.approveKYC = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'KYC approved successfully',
+      message: req.t('KYC.APPROVED'),
       data: {
         user: {
           _id: user._id,
@@ -272,27 +272,27 @@ exports.rejectKYC = async (req, res, next) => {
     if (!reason || reason.trim().length === 0) {
       return res.status(400).json({
         status: 'fail',
-        message: 'Rejection reason is required',
+        message: req.t('KYC.REJECTION_REASON_REQUIRED'),
       });
     }
 
     if (reason.length > 500) {
       return res.status(400).json({
         status: 'fail',
-        message: 'Rejection reason must not exceed 500 characters',
+        message: req.t('KYC.REJECTION_REASON_MAX'),
       });
     }
 
     const user = await User.findById(req.params.userId);
 
     if (!user) {
-      return res.status(404).json({ status: 'fail', message: 'User not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
     if (user.kycStatus === 'rejected') {
       return res.status(400).json({
         status: 'fail',
-        message: 'User KYC is already rejected',
+        message: req.t('KYC.ALREADY_REJECTED'),
         rejectionReason: user.kycRejectionReason,
       });
     }
@@ -309,7 +309,7 @@ exports.rejectKYC = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'KYC rejected successfully',
+      message: req.t('KYC.REJECTED'),
       data: {
         user: {
           _id: user._id,
@@ -335,13 +335,13 @@ exports.resetKYC = async (req, res, next) => {
     const user = await User.findById(req.params.userId);
 
     if (!user) {
-      return res.status(404).json({ status: 'fail', message: 'User not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
     if (user.kycStatus === 'not_submitted') {
       return res.status(400).json({
         status: 'fail',
-        message: 'KYC status is already not_submitted',
+        message: req.t('KYC.ALREADY_NOT_SUBMITTED'),
       });
     }
 
@@ -357,7 +357,7 @@ exports.resetKYC = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'KYC has been reset. User can submit documents again.',
+      message: req.t('KYC.RESET'),
       data: {
         user: {
           _id: user._id,

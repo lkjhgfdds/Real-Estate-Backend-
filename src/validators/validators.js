@@ -48,7 +48,7 @@ exports.createViewingRequestSchema = Joi.object({
   propertyId:    Joi.string().hex().length(24).required(),
   preferredDate: Joi.date().iso().min('now').required(),
   preferredTime: Joi.string().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required()
-    .messages({ 'string.pattern.base': 'الوقت يجب أن يكون بتنسيق HH:MM' }),
+    .messages({ 'string.pattern.base': 'Time must be in HH:MM format' }),
   message: Joi.string().max(500).optional(),
 });
 exports.updateViewingStatusSchema = Joi.object({

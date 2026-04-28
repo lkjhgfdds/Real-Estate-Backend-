@@ -83,13 +83,13 @@ exports.changeUserRole = async (req, res, next) => {
     const { role } = req.body;
     const validRoles = ['buyer', 'owner', 'agent', 'admin'];
     if (!validRoles.includes(role)) {
-      return res.status(400).json({ status: 'fail', message: `Role must be: ${validRoles.join(', ')}` });
+      return res.status(400).json({ status: 'fail', message: req.t('DASHBOARD.INVALID_ROLE', { roles: validRoles.join(', ') }) });
     }
     const user = await User.findById(req.params.id).lean();
-    if (!user) return res.status(404).json({ status: 'fail', message: 'User not found' });
+    if (!user) return res.status(404).json({ status: 'fail', message: req.t('DASHBOARD.USER_NOT_FOUND') });
     user.role = role;
     await user.save();
-    res.status(200).json({ status: 'success', message: 'User role updated successfully', data: { user } });
+    res.status(200).json({ status: 'success', message: req.t('DASHBOARD.ROLE_UPDATED'), data: { user } });
   } catch (err) {
     next(err);
   }
@@ -100,10 +100,14 @@ exports.changeUserRole = async (req, res, next) => {
 exports.toggleBanUser = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).lean();
-    if (!user) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+    if (!user) return res.status(404).json({ status: 'fail', message: req.t('DASHBOARD.USER_NOT_FOUND') });
     user.isBanned = !user.isBanned;
     await user.save();
-    res.status(200).json({ status: 'success', message: user.isBanned ? 'تم حظر المستخدم' : 'تم إلغاء الحظر', data: { user } });
+    res.status(200).json({
+      status: 'success',
+      message: user.isBanned ? req.t('DASHBOARD.USER_BANNED') : req.t('DASHBOARD.USER_UNBANNED'),
+      data: { user },
+    });
   } catch (err) {
     next(err);
   }
@@ -113,10 +117,10 @@ exports.toggleBanUser = async (req, res, next) => {
 exports.approveProperty = async (req, res, next) => {
   try {
     const property = await Property.findById(req.params.id).lean();
-    if (!property) return res.status(404).json({ status: 'fail', message: 'العقار غير موجود' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('DASHBOARD.PROPERTY_NOT_FOUND') });
     property.isApproved = true;
     await property.save();
-    res.status(200).json({ status: 'success', message: 'تمت الموافقة على العقار', data: { property } });
+    res.status(200).json({ status: 'success', message: req.t('DASHBOARD.PROPERTY_APPROVED'), data: { property } });
   } catch (err) {
     next(err);
   }
@@ -126,10 +130,10 @@ exports.approveProperty = async (req, res, next) => {
 exports.rejectProperty = async (req, res, next) => {
   try {
     const property = await Property.findById(req.params.id).lean();
-    if (!property) return res.status(404).json({ status: 'fail', message: 'العقار غير موجود' });
+    if (!property) return res.status(404).json({ status: 'fail', message: req.t('DASHBOARD.PROPERTY_NOT_FOUND') });
     property.isApproved = false;
     await property.save();
-    res.status(200).json({ status: 'success', message: 'تم رفض العقار', data: { property } });
+    res.status(200).json({ status: 'success', message: req.t('DASHBOARD.PROPERTY_REJECTED'), data: { property } });
   } catch (err) {
     next(err);
   }
@@ -139,11 +143,11 @@ exports.rejectProperty = async (req, res, next) => {
 exports.approveAuction = async (req, res, next) => {
   try {
     const auction = await Auction.findById(req.params.id).lean();
-    if (!auction) return res.status(404).json({ status: 'fail', message: 'المزاد غير موجود' });
+    if (!auction) return res.status(404).json({ status: 'fail', message: req.t('DASHBOARD.AUCTION_NOT_FOUND') });
     auction.isApproved = true;
     // FIX — لا نغير status هنا، الـ cron job يتولى ذلك
     await auction.save();
-    res.status(200).json({ status: 'success', message: 'تمت الموافقة على المزاد', data: { auction } });
+    res.status(200).json({ status: 'success', message: req.t('DASHBOARD.AUCTION_APPROVED'), data: { auction } });
   } catch (err) {
     next(err);
   }
@@ -179,9 +183,9 @@ exports.deleteReview = async (req, res, next) => {
     // FIX — استخدام deleteOne() بدل findByIdAndDelete() حتى يُطلق الـ post('deleteOne') hook
     // الذي يستدعي calcAverageRatings تلقائياً لإعادة حساب avgRating على العقار
     const review = await Review.findById(req.params.id).lean();
-    if (!review) return res.status(404).json({ status: 'fail', message: 'التقييم غير موجود' });
+    if (!review) return res.status(404).json({ status: 'fail', message: req.t('DASHBOARD.REVIEW_NOT_FOUND') });
     await review.deleteOne();
-    res.status(200).json({ status: 'success', message: 'تم حذف التقييم' });
+    res.status(200).json({ status: 'success', message: req.t('DASHBOARD.REVIEW_DELETED') });
   } catch (err) {
     next(err);
   }

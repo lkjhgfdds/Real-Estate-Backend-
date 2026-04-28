@@ -99,10 +99,10 @@ exports.getSavedSearches = asyncHandler(async (req, res) => {
 
 exports.saveSearch = asyncHandler(async (req, res, next) => {
   const { name, filters, notifyOnMatch } = req.body;
-  if (!name || !filters) return next(new AppError('name and filters are required', 400));
+  if (!name || !filters) return next(new AppError(req.t('COMMON.VALIDATION_DATA_ERROR'), 400));
 
   const count = await SavedSearch.countDocuments({ userId: req.user._id });
-  if (count >= 10) return next(new AppError('You cannot save more than 10 searches', 400));
+  if (count >= 10) return next(new AppError(req.t('COMMON.NO_PERMISSION'), 400));
 
   const search = await SavedSearch.create({
     userId: req.user._id, name, filters, notifyOnMatch: notifyOnMatch !== false,
@@ -112,7 +112,7 @@ exports.saveSearch = asyncHandler(async (req, res, next) => {
 
 exports.deleteSavedSearch = asyncHandler(async (req, res, next) => {
   const search = await SavedSearch.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
-  if (!search) return next(new AppError('Search not found', 404));
+  if (!search) return next(new AppError(req.t('COMMON.NOT_AUTHORIZED'), 404));
   res.status(204).json({ status: 'success', data: null });
 });
 
@@ -120,9 +120,9 @@ exports.deleteSavedSearch = asyncHandler(async (req, res, next) => {
 exports.getPropertyAnalytics = asyncHandler(async (req, res, next) => {
   const Property = require('../../models/property.model');
   const prop = await Property.findById(req.params.id).lean();
-  if (!prop) return next(new AppError('Property not found', 404));
+  if (!prop) return next(new AppError(req.t('PROPERTY.NOT_FOUND'), 404));
   if (prop.owner.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-    return next(new AppError('You are not authorized', 403));
+    return next(new AppError(req.t('COMMON.NOT_AUTHORIZED'), 403));
   }
   const { getPropertyAnalytics } = require('../../services/analytics.service');
   const days      = Number(req.query.days) || 30;
@@ -133,7 +133,7 @@ exports.getPropertyAnalytics = asyncHandler(async (req, res, next) => {
 // ─── Similar Properties ───────────────────────────────────────
 exports.getSimilarProperties = asyncHandler(async (req, res, next) => {
   const property = await Property.findById(req.params.id).select('type listingType location.city price').lean();
-  if (!property) return next(new AppError('العقار غير موجود', 404));
+  if (!property) return next(new AppError(req.t('PROPERTY.NOT_FOUND'), 404));
 
   const similar = await Property.find({
     _id:         { $ne: property._id },

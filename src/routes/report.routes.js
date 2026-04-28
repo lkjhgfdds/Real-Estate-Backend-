@@ -6,10 +6,12 @@ const restrictTo   = require('../middlewares/restrictTo.middleware');
 const { body }     = require('express-validator');
 const validate     = require('../middlewares/validation.middleware');
 
+const t = (key) => (value, { req }) => req.t(key);
+
 const reportSchema = [
-  body('targetType').isIn(['property','user','review','inquiry']).withMessage('targetType غير صالح'),
-  body('targetId').isMongoId().withMessage('targetId غير صالح'),
-  body('reason').isIn(['spam','fraud','inappropriate','wrong_info','duplicate','other']).withMessage('reason غير صالح'),
+  body('targetType').isIn(['property','user','review','inquiry']).withMessage(t('VALIDATION.REPORT_TARGET_TYPE_INVALID')),
+  body('targetId').isMongoId().withMessage(t('VALIDATION.REPORT_TARGET_ID_INVALID')),
+  body('reason').isIn(['spam','fraud','inappropriate','wrong_info','duplicate','other']).withMessage(t('VALIDATION.REPORT_REASON_INVALID')),
   body('description').optional().isLength({ max: 1000 }),
 ];
 

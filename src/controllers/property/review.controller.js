@@ -11,10 +11,10 @@ exports.createReview = async (req, res, next) => {
 
     const property = await Property.findById(propertyId);
     if (!property) {
-      return res.status(404).json({ status: 'fail', message: 'Property not found' });
+      return res.status(404).json({ status: 'fail', message: req.t('PROPERTY.NOT_FOUND') });
     }
     if (property.owner.toString() === req.user._id.toString()) {
-      return res.status(400).json({ status: 'fail', message: 'You cannot rate your own property' });
+      return res.status(400).json({ status: 'fail', message: req.t('REVIEW.OWN_PROPERTY') });
     }
 
     // FIX — Verify user has actually completed their stay (completed, not approved)
@@ -27,7 +27,7 @@ exports.createReview = async (req, res, next) => {
     if (!booking) {
       return res.status(403).json({
         status:  'fail',
-        message: 'You must complete a booking for this property before you can rate it',
+        message: req.t('REVIEW.MUST_COMPLETE_BOOKING'),
       });
     }
 
@@ -39,15 +39,15 @@ exports.createReview = async (req, res, next) => {
     // Notify property owner
     await createNotification(req.io, property.owner, {
       type:    'review',
-      title:   'New rating on your property',
-      message: `${req.user.name} rated your property "${property.title}" with ${rating} stars`,
+      title:   req.t('NOTIFICATION.NEW_REVIEW'),
+      message: req.t('NOTIFICATION.NEW_REVIEW_MSG', { name: req.user.name, property: property.title, rating }),
       link:    `/properties/${propertyId}`,
     }).catch(() => {});
 
     res.status(201).json({ status: 'success', data: { review } });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({ status: 'fail', message: 'You have already rated this property' });
+      return res.status(409).json({ status: 'fail', message: req.t('REVIEW.ALREADY_RATED') });
     }
     next(err);
   }
@@ -75,9 +75,9 @@ exports.getPropertyReviews = async (req, res, next) => {
 exports.updateReview = async (req, res, next) => {
   try {
     const review = await Review.findById(req.params.id).lean();
-    if (!review) return res.status(404).json({ status: 'fail', message: 'Review not found' });
+    if (!review) return res.status(404).json({ status: 'fail', message: req.t('REVIEW.NOT_FOUND') });
     if (review.userId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ status: 'fail', message: 'Not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
 
     const { rating, comment } = req.body;
@@ -96,9 +96,9 @@ exports.updateReview = async (req, res, next) => {
 exports.deleteReview = async (req, res, next) => {
   try {
     const review = await Review.findById(req.params.id);
-    if (!review) return res.status(404).json({ status: 'fail', message: 'Review not found' });
+    if (!review) return res.status(404).json({ status: 'fail', message: req.t('REVIEW.NOT_FOUND') });
     if (review.userId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'fail', message: 'Not authorized' });
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
     }
 
     await review.deleteOne();
