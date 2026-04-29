@@ -4,15 +4,20 @@
   "description": "Real Estate Management System — Production-Ready Backend API",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "lint": "eslint src/ --ext .js",
-    "lint:fix": "eslint src/ --ext .js --fix",
-    "test": "jest --runInBand --detectOpenHandles",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage --runInBand",
-    "docs": "node src/docs/swagger.js"
+    "start":            "node src/server.js",
+    "dev":              "nodemon src/server.js",
+    "lint":             "eslint src/ --ext .js",
+    "lint:fix":         "eslint src/ --ext .js --fix",
+    "test":             "jest --runInBand --detectOpenHandles",
+    "test:watch":       "jest --watch",
+    "test:coverage":    "jest --coverage --runInBand",
+    "docs":             "node src/docs/swagger.js",
+    "seed:admin":       "node src/seeds/admin-seed.js",
+    "seed:properties":  "node src/seeds/property-seed.js",
+    "seed:luxe":        "node src/seeds/luxe-property-seed.js",
+    "seed:all":         "npm run seed:admin && npm run seed:luxe"
   },
+
   "keywords": [
     "real-estate",
     "api",
@@ -30,7 +35,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dayjs": "^1.11.20",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^8.3.1",

@@ -19,6 +19,12 @@ const propertySchema = new mongoose.Schema(
       required: [true, 'VALIDATION.PRICE_REQUIRED'],
       min: [0, 'VALIDATION.PRICE_MIN'],
     },
+    // ── FIX #5: currency — stored per property ──────────────────────────────
+    currency: {
+      type: String,
+      enum: { values: ['USD', 'GBP', 'EUR', 'AED', 'SAR', 'EGP'], message: 'VALIDATION.CURRENCY_INVALID' },
+      default: 'USD',
+    },
     type: {
       type: String,
       required: [true, 'VALIDATION.TYPE_REQUIRED'],
@@ -46,6 +52,11 @@ const propertySchema = new mongoose.Schema(
     bedrooms:  { type: Number, default: 0, min: 0 },
     bathrooms: { type: Number, default: 0, min: 0 },
     images:    { type: [String], default: [] },
+    // ── FIX #5: features — list of amenities ────────────────────────────────
+    features: {
+      type: [String],
+      default: [],
+    },
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -67,6 +78,7 @@ const propertySchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
 
 // Indexes for query performance
 propertySchema.index({ price: 1 });
@@ -91,4 +103,10 @@ propertySchema.virtual('reviews', {
   localField:   '_id',
 });
 
+// FIX #5 — badge virtual: derived from listingType so frontend gets it automatically
+propertySchema.virtual('badge').get(function () {
+  return this.listingType === 'rent' ? 'For Rent' : 'For Sale';
+});
+
 module.exports = mongoose.model('Property', propertySchema);
+

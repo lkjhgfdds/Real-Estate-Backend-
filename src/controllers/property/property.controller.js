@@ -35,7 +35,23 @@ exports.createProperty = asyncHandler(async (req, res) => {
 
 // ─── Get All Properties ───────────────────────────────────────────────────────
 exports.getAllProperties = asyncHandler(async (req, res) => {
-  const features = new APIFeatures(Property.find({ isApproved: true }), req.query)
+  // ── Remap frontend query params → correct Mongoose field paths ─────────────
+  const rawQuery = { ...req.query };
+
+  // city → location.city (nested field in schema)
+  if (rawQuery.city) {
+    rawQuery['location.city'] = new RegExp(rawQuery.city, 'i');
+    delete rawQuery.city;
+  }
+
+  // minPrice / maxPrice → price range operators
+  if (rawQuery.minPrice || rawQuery.maxPrice) {
+    rawQuery.price = {};
+    if (rawQuery.minPrice) { rawQuery.price.$gte = Number(rawQuery.minPrice); delete rawQuery.minPrice; }
+    if (rawQuery.maxPrice) { rawQuery.price.$lte = Number(rawQuery.maxPrice); delete rawQuery.maxPrice; }
+  }
+
+  const features = new APIFeatures(Property.find({ isApproved: true }), rawQuery)
     .filter()
     .search()
     .sort()
