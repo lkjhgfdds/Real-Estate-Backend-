@@ -191,7 +191,7 @@ const shutdown = async (signal) => {
   });
   setTimeout(() => process.exit(1), 10000);
 };
-['SIGTERM','SIGINT'].forEach(sig => process.on(sig, () => shutdown(sig)));
+['SIGTERM','SIGINT', 'SIGUSR2'].forEach(sig => process.on(sig, () => shutdown(sig)));
 process.on('unhandledRejection', (err) => { logger.error('Unhandled Rejection:', err.message); logger.error(err.stack); shutdown('unhandledRejection'); });
 process.on('uncaughtException', (err) => { logger.error('Uncaught Exception:', err.message); logger.error(err.stack); shutdown('uncaughtException'); });
 

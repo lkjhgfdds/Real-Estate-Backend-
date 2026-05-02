@@ -35,12 +35,17 @@ const isAllowedImageBuffer = (buffer) => {
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE, files: 10 } });
 
+const logger = require('../utils/logger'); // Import logger
+
 const uploadToCloudinary = (buffer, folder = 'real-estate') =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { folder, resource_type: 'image', quality: 'auto', fetch_format: 'auto' },
       (error, result) => {
-        if (error) return reject(new AppError('Failed to upload image to Cloudinary', 500));
+        if (error) {
+          logger.error(`❌ Cloudinary Upload Failed: ${error.message || JSON.stringify(error)}`);
+          return reject(new AppError('Failed to upload image to Cloudinary', 500));
+        }
         resolve(result.secure_url);
       }
     );
