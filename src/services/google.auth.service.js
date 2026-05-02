@@ -18,15 +18,16 @@
 
 const { OAuth2Client } = require('google-auth-library');
 
-// Explicit hardcoded fallback + env variable
-const clientID = process.env.GOOGLE_CLIENT_ID || '668341342866-ufmo1js3tbrv5nkeakgtn81kjsp9r3if.apps.googleusercontent.com';
+// Configuration: strictly rely on environment variables (no hardcoded fallbacks for security)
+const clientID = process.env.GOOGLE_CLIENT_ID;
 
-// Validation: ensure CLIENT_ID is correctly loaded
-if (!clientID.startsWith('6683')) {
+// Validation: ensure CLIENT_ID is correctly loaded and not a placeholder
+// This runs at module-load time to catch configuration errors immediately.
+if (!clientID || clientID.includes('your_google_client_id_here') || !clientID.endsWith('.apps.googleusercontent.com')) {
   throw new Error(
-    `[CRITICAL] GOOGLE_CLIENT_ID is invalid or not loaded. ` +
-    `Expected to start with '6683', got: ${clientID}. ` +
-    `Check .env file and ensure process.env.GOOGLE_CLIENT_ID is set.`
+    `[CRITICAL] GOOGLE_CLIENT_ID is missing or invalid in .env. ` +
+    `Expected a valid Google OAuth Client ID ending in '.apps.googleusercontent.com', but got: ${clientID || 'UNDEFINED'}. ` +
+    `Please set it correctly in your .env file.`
   );
 }
 
