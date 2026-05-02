@@ -50,8 +50,8 @@ const getClient = () => {
 const verifyGoogleToken = async (idToken) => {
   const client = getClient();
 
-  // Debug: Log the token prefix and CLIENT_ID being used
-  console.log(`[Auth-Debug] Client ID in use: ${CLIENT_ID}`);
+  // Debug: Log the token prefix and client ID being used
+  console.log(`[Auth-Debug] Client ID in use: ${clientID}`);
   console.log(`[Auth-Debug] Token prefix (first 50 chars): ${idToken.substring(0, 50)}...`);
 
   try {

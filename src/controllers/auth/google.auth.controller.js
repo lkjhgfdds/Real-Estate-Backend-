@@ -10,7 +10,7 @@ const logger = require('../../utils/logger');
 
 const SAFE_PROJECTION = '-password -googleId -otpHash -otpExpires -otpAttempts '
   + '-passwordResetToken -passwordResetExpiry -loginAttempts -lockUntil '
-  + '-tokenVersion -__v -kycDocuments -bankAccounts';
+  + '-tokenVersion -__v -kycDocuments';
 
 exports.googleAuth = asyncHandler(async (req, res, next) => {
   const { idToken } = req.body;
@@ -48,11 +48,15 @@ exports.googleAuth = asyncHandler(async (req, res, next) => {
     }
 
     if (!user.googleId) {
-      user.googleId = googleId;
-      user.authProvider = 'google';
-      if (!user.photo && picture) user.photo = picture;
-      user.isVerified = true;
-      await user.save({ validateBeforeSave: false });
+      const updateData = {
+        googleId,
+        authProvider: 'google',
+        isVerified: true,
+      };
+      if (!user.photo && picture) {
+        updateData.photo = picture;
+      }
+      await User.updateOne({ _id: user._id }, { $set: updateData }, { runValidators: false });
       logger.info(`[GoogleAuth] Linked Google account to existing user: ${user._id}`);
     }
   } else {
@@ -88,6 +92,9 @@ exports.googleAuth = asyncHandler(async (req, res, next) => {
   });
 
   const safeUser = await User.findById(user._id).select(SAFE_PROJECTION).lean();
+  if (safeUser && safeUser.bankAccounts !== undefined) {
+    delete safeUser.bankAccounts;
+  }
 
   res.status(200).json({
     status: 'success',

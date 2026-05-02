@@ -112,6 +112,7 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
 }));
 
 // Body parsing
