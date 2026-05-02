@@ -115,7 +115,7 @@ router.use(restrictTo('admin'));
  *       403:
  *         description: Admin access required
  */
-router.get('/pending', kycController.getPendingKYC);
+router.get('/list', kycController.getKYCList);
 
 /**
  * @swagger
@@ -206,5 +206,6 @@ router.patch('/:userId/reject', kycController.rejectKYC);
  *         description: User not found
  */
 router.patch('/:userId/reset', kycController.resetKYC);
+router.patch('/:userId/revert', kycController.revertKYC);
 
 module.exports = router;

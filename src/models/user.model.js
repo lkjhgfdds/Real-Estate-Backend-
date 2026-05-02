@@ -102,6 +102,14 @@ const userSchema = new mongoose.Schema(
     kycRejectionReason: { type: String, select: false },
     kycAttempts: { type: Number, default: 0, select: false },
 
+    // Property Ownership Verification (for Owners/Agents)
+    ownershipDocuments: [
+      {
+        imageUrl: { type: String, required: true },
+        uploadedAt: { type: Date, default: Date.now }
+      }
+    ],
+
     //  Bank Accounts (for receiving/paying)
     bankAccounts: [
       {
@@ -208,5 +216,10 @@ userSchema.methods.incLoginAttempts = function () {
     }
   }
 };
+
+// ── Performance Indexes (Admin User Management) ───────────────
+userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ isBanned: 1, createdAt: -1 });
+userSchema.index({ name: 'text', email: 'text' }); // full-text search
 
 module.exports = mongoose.model('User', userSchema);
