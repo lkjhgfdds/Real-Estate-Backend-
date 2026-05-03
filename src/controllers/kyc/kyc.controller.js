@@ -15,7 +15,7 @@ const logger = require('../../utils/logger');
  */
 exports.uploadKYCDocuments = async (req, res, next) => {
   try {
-    const { documentType, frontImage, backImage, ownershipDocuments } = req.body;
+    const { documentType, frontImage, backImage } = req.body;
 
     // Validate document type
     const VALID_TYPES = ['national_id', 'passport', 'drivers_license'];
@@ -27,42 +27,48 @@ exports.uploadKYCDocuments = async (req, res, next) => {
     }
 
     // Validate images (should already be Cloudinary URLs from upload middleware)
-    if (!frontImage) {
-      return res.status(400).json({
-        status: 'fail',
-        message: req.t('KYC.FRONT_IMAGE_REQUIRED'),
-      });
-    }
+    // Relaxed validation: users can upload what they want or delete everything.
+    // If no frontImage is provided, we just clear the identity documents later.
 
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
 
-    // Store document(s) - replace old ones when new ones submitted
-    user.kycDocuments = [
-      {
-        type: documentType,
-        frontImage,
-        backImage: backImage || null,
-        uploadedAt: new Date(),
-      },
-    ];
+    // ── Finalize ownership docs ──────
+    // Mark all current docs as permanent.
+    user.ownershipDocuments = user.ownershipDocuments.map(doc => {
+      doc.isTemporary = false;
+      return doc;
+    });
 
-    // Handle Ownership Documents (if provided)
-    if (ownershipDocuments && Array.isArray(ownershipDocuments)) {
-      user.ownershipDocuments = ownershipDocuments.map(url => ({
-        imageUrl: url,
-        uploadedAt: new Date()
-      }));
+    // Store identity document(s) - replace old ones or clear if empty
+    if (frontImage) {
+      user.kycDocuments = [
+        {
+          type: documentType || 'national_id',
+          frontImage,
+          backImage: backImage || null,
+          uploadedAt: new Date(),
+        },
+      ];
+    } else {
+      user.kycDocuments = [];
     }
 
-    // Update KYC status
-    user.kycStatus = 'pending';
-    user.kycSubmittedAt = new Date();
+    // Update KYC status and version
+    if (user.kycDocuments.length === 0 && user.ownershipDocuments.length === 0) {
+      user.kycStatus = 'not_submitted';
+      user.kycSubmittedAt = undefined;
+    } else {
+      user.kycStatus = 'pending';
+      user.kycSubmittedAt = new Date();
+      user.kycVersion += 1; // Increment semantic version on final submission
+    }
+    
     await user.save({ validateBeforeSave: false });
 
-    logger.info(`[KYC] User ${user._id} submitted KYC documents (${documentType}) & ${ownershipDocuments?.length || 0} ownership docs → status: PENDING`);
+    logger.info(`[KYC] User ${user._id} submitted KYC (${documentType}) | ${user.ownershipDocuments.length} ownership docs → PENDING`);
 
     res.status(200).json({
       status: 'success',
@@ -100,6 +106,136 @@ exports.uploadKYCImageSingle = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * POST /api/v1/kyc/ownership/upload
+ * Upload a single ownership document file (PDF/image) to Cloudinary
+ * and immediately save it to user.ownershipDocuments in DB
+ */
+exports.uploadOwnershipFile = async (req, res, next) => {
+  try {
+    if (!req.body.fileUrl) {
+      return res.status(400).json({ status: 'fail', message: 'File upload failed' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ status: 'fail', message: 'User not found' });
+    }
+
+    const newDoc = {
+      fileUrl: req.body.fileUrl,
+      fileName: req.body.fileName || 'document',
+      fileType: req.body.fileType || 'image',
+      isTemporary: true,  // Will be finalized on KYC submit
+      uploadedAt: new Date(),
+    };
+
+    user.ownershipDocuments.push(newDoc);
+    await user.save({ validateBeforeSave: false });
+
+    // Get the saved subdocument with its generated _id
+    const savedDoc = user.ownershipDocuments[user.ownershipDocuments.length - 1];
+
+    logger.info(`[KYC] User ${user._id} uploaded ownership doc → ${savedDoc.fileName} (id: ${savedDoc._id})`);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        document: {
+          _id: savedDoc._id,
+          fileUrl: savedDoc.fileUrl,
+          fileName: savedDoc.fileName,
+          fileType: savedDoc.fileType,
+          isTemporary: savedDoc.isTemporary,
+          uploadedAt: savedDoc.uploadedAt,
+        },
+        total: user.ownershipDocuments.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/v1/kyc/ownership/:docId
+ * Remove an ownership document by its MongoDB _id
+ */
+exports.deleteOwnershipFile = async (req, res, next) => {
+  try {
+    const { docId } = req.params;
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ status: 'fail', message: 'User not found' });
+    }
+
+    const docIndex = user.ownershipDocuments.findIndex(
+      doc => doc._id.toString() === docId
+    );
+
+    if (docIndex === -1) {
+      return res.status(404).json({ status: 'fail', message: 'Document not found' });
+    }
+
+    const removed = user.ownershipDocuments[docIndex];
+    user.ownershipDocuments.splice(docIndex, 1);
+
+    // If no documents remain at all, reset status
+    if (user.kycDocuments.length === 0 && user.ownershipDocuments.length === 0) {
+      user.kycStatus = 'not_submitted';
+      user.kycSubmittedAt = undefined;
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`[KYC] User ${user._id} deleted ownership doc id=${docId} → ${removed.fileName}`);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Document removed successfully',
+      data: { remaining: user.ownershipDocuments.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+/**
+ * DELETE /api/v1/kyc/identity-document
+ * Immediately remove identity document (front/back card or passport) from DB
+ */
+exports.deleteIdentityDocument = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ status: 'fail', message: 'User not found' });
+    }
+
+    user.kycDocuments = [];
+    
+    // If no ownership docs remain either, reset status
+    if (user.ownershipDocuments.length === 0) {
+      user.kycStatus = 'not_submitted';
+      user.kycSubmittedAt = undefined;
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`[KYC] User ${user._id} deleted identity documents from DB`);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Identity documents removed successfully',
+      data: { kycStatus: user.kycStatus }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 
 /**
  * GET /api/v1/kyc/status
@@ -141,18 +277,12 @@ exports.getKYCStatus = async (req, res, next) => {
 exports.getMyKYC = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select(
-      'name email kycStatus kycDocuments kycSubmittedAt kycVerifiedAt kycApprovedAt kycRejectionReason'
+      'name email photo kycStatus kycDocuments ownershipDocuments kycSubmittedAt kycVerifiedAt kycApprovedAt kycRejectionReason kycVersion'
     );
 
     if (!user) {
       return res.status(404).json({ status: 'fail', message: req.t('AUTH.USER_NOT_FOUND') });
     }
-
-    // Don't expose image URLs in documents (security)
-    const documents = user.kycDocuments.map(doc => ({
-      type: doc.type,
-      uploadedAt: doc.uploadedAt,
-    }));
 
     res.status(200).json({
       status: 'success',
@@ -165,7 +295,9 @@ exports.getMyKYC = async (req, res, next) => {
         kycInfo: {
           status: user.kycStatus,
           documentcount: user.kycDocuments.length,
-          documents,
+          documents: user.kycDocuments,
+          ownershipDocuments: user.ownershipDocuments,
+          version: user.kycVersion,
           submittedAt: user.kycSubmittedAt,
           approvedAt: user.kycApprovedAt,
           rejectionReason: user.kycRejectionReason,
@@ -214,7 +346,7 @@ exports.getKYCList = async (req, res, next) => {
 
     const [users, total] = await Promise.all([
       User.find(filter)
-        .select('+kycSubmittedAt +kycApprovedAt name email kycStatus kycDocuments kycAttempts ownershipDocuments kycRejectionReason createdAt')
+        .select('+kycSubmittedAt +kycApprovedAt name email kycStatus kycDocuments kycVersion kycAttempts ownershipDocuments kycRejectionReason createdAt')
         .skip(skip)
         .limit(limit)
         .sort('-createdAt'),

@@ -58,6 +58,7 @@ const { initAuctionJob }     = require('./jobs/auction.job');
 const { initSavedSearchJob } = require('./jobs/savedSearch.job');
 const { initBookingJob }     = require('./jobs/booking.job');
 const initPaymentExpiryJob   = require('./jobs/payment-expiry.job');
+const { initKycCleanupJob }  = require('./jobs/kyc-cleanup.job');
 // ── Routes ──────────────────────────────────────────────────
 const authRoutes           = require('./routes/auth.routes');
 const userRoutes           = require('./routes/user.routes');
@@ -209,6 +210,7 @@ const startServer = async () => {
     initSavedSearchJob(io);
     initBookingJob();
     initPaymentExpiryJob();  // ← Payment expiry cleanup job
+    initKycCleanupJob();     // ← KYC orphan doc cleanup (daily 03:00 AM)
   });
 };
 if (process.env.NODE_ENV !== 'test') {
