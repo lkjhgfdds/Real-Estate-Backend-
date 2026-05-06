@@ -16,7 +16,11 @@ const AUDIT_ACTIONS = [
   // Booking
   'APPROVE_BOOKING',
   'REJECT_BOOKING',
+  'CANCEL_BOOKING',
+  'ADMIN_CANCEL_BOOKING',
   'BULK_UPDATE_BOOKINGS',
+  // Payment
+  'REFUND_PAYMENT',
   // User management
   'BAN_USER',
   'UNBAN_USER',
@@ -29,6 +33,8 @@ const AUDIT_ACTIONS = [
   'RESET_KYC',
   // Content moderation
   'DELETE_REVIEW',
+  // Subscription
+  'ADMIN_HARD_CANCEL_SUBSCRIPTION',
   // Auctions
   'APPROVE_AUCTION',
 ];
@@ -64,7 +70,7 @@ const auditLogSchema = new Schema(
     targetType: {
       type: String,
       required: [true, 'Audit log must have a target type'],
-      enum: ['Property', 'Booking', 'User', 'Review', 'Auction'],
+      enum: ['Property', 'Booking', 'User', 'Review', 'Auction', 'Payment', 'Subscription'],
       index: true,
     },
 

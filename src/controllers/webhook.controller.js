@@ -149,43 +149,17 @@ exports.handlePaymobWebhook = asyncHandler(async (req, res, next) => {
      return res.status(200).json({ status: 'success', message: 'Payment failed recorded' });
   }
 
-  // 4. ATOMIC UPDATE
-  const session = await require('mongoose').startSession();
-  session.startTransaction();
+  // 4. ATOMIC UPDATE via PaymentService
   try {
-    const Booking = require('../models/booking.model');
-    const Property = require('../models/property.model');
-
-    // Update payment
-    payment.status = 'paid';
-    payment.isVerified = true;
-    payment.paidAt = new Date();
-    payment.transactionId = transaction.id;
-    await payment.save({ session });
-
-    // Update booking
-    const booking = await Booking.findById(payment.booking).session(session);
-    if (booking) {
-      booking.status = 'completed';
-      booking.paymentStatus = 'paid';
-      await booking.save({ session });
-
-      // Update property
-      const property = await Property.findById(payment.property).session(session);
-      if (property) {
-        property.status = booking.bookingType === 'sale' ? 'sold' : 'reserved';
-        await property.save({ session });
-      }
+    const result = await paymentService.verifyPayment(payment._id, payload);
+    
+    if (result.success) {
+      logger.info(`[Webhook/Paymob] Atomic update successful for Payment ${payment._id}`);
+      return res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
+    } else {
+      return next(new AppError(result.error || 'Payment verification failed', 400));
     }
-
-    await session.commitTransaction();
-    session.endSession();
-
-    logger.info(`[Webhook/Paymob] Atomic update successful for Payment ${payment._id}`);
-    res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     logger.error(`[Webhook/Paymob] Atomic update failed: ${error.message}`);
     return next(new AppError('Database transaction failed', 500));
   }
@@ -242,40 +216,17 @@ exports.handlePaypalWebhook = asyncHandler(async (req, res, next) => {
       return res.status(200).json({ status: 'success', message: 'Payment failed/pending recorded' });
   }
 
-  // 4. ATOMIC UPDATE
-  const session = await require('mongoose').startSession();
-  session.startTransaction();
+  // 4. ATOMIC UPDATE via PaymentService
   try {
-    const Booking = require('../models/booking.model');
-    const Property = require('../models/property.model');
-
-    payment.status = 'paid';
-    payment.isVerified = true;
-    payment.paidAt = new Date();
-    payment.transactionId = resource.id;
-    await payment.save({ session });
-
-    const booking = await Booking.findById(payment.booking).session(session);
-    if (booking) {
-      booking.status = 'completed';
-      booking.paymentStatus = 'paid';
-      await booking.save({ session });
-
-      const property = await Property.findById(payment.property).session(session);
-      if (property) {
-        property.status = booking.bookingType === 'sale' ? 'sold' : 'reserved';
-        await property.save({ session });
-      }
+    const result = await paymentService.verifyPayment(payment._id, payload);
+    
+    if (result.success) {
+      logger.info(`[Webhook/PayPal] Atomic update successful for Payment ${payment._id}`);
+      return res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
+    } else {
+      return next(new AppError(result.error || 'Payment verification failed', 400));
     }
-
-    await session.commitTransaction();
-    session.endSession();
-
-    logger.info(`[Webhook/PayPal] Atomic update successful for Payment ${payment._id}`);
-    res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     logger.error(`[Webhook/PayPal] Atomic update failed: ${error.message}`);
     return next(new AppError('Database transaction failed', 500));
   }

@@ -6,6 +6,8 @@ const ProviderFactory = require('./providers/factory');
 const AppError = require('../utils/appError');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
+const AuditLog = require('../models/auditLog.model');
+const Transaction = require('../models/transaction.model');
 
 // ─────────────────────────────────────────────────────────────────
 // Payment Service Layer
@@ -210,20 +212,54 @@ class PaymentService {
       if (payment.paymentType === 'subscription') {
         result = await this.activateSubscriptionFromPayment(payment, session);
       } else {
-        // Booking payment — update booking + property
+        // Booking payment — update booking + property status atomically
         const booking = await Booking.findByIdAndUpdate(
           payment.booking,
-          { paymentStatus: 'paid', paidAmount: payment.totalAmount },
+          { 
+            status: 'completed', 
+            paymentStatus: 'paid', 
+            paidAmount: payment.totalAmount 
+          },
           { session, new: true }
         );
 
-        await Property.findByIdAndUpdate(
-          payment.property,
-          { $inc: { successfulBookings: 1 } },
-          { session }
-        );
+        if (booking) {
+          await Property.findByIdAndUpdate(
+            payment.property,
+            { 
+              status: booking.bookingType === 'sale' ? 'sold' : 'reserved',
+              $inc: { successfulBookings: 1 } 
+            },
+            { session }
+          );
+          logger.info(`[Payment] Booking ${booking._id} marked as COMPLETED, Property set to ${booking.bookingType === 'sale' ? 'sold' : 'reserved'}`);
+        }
 
-        logger.info(`[Payment] Booking ${booking._id} marked as PAID`);
+        // ── Ledger Logging: Payment ──
+        await Transaction.create([{
+          type: 'payment',
+          payment: payment._id,
+          booking: payment.booking,
+          user: payment.user,
+          credit: payment.totalAmount,
+          metadata: {
+            property: payment.property,
+            platformFee: payment.platformFee
+          }
+        }], { session });
+
+        // ── Ledger Logging: Commission ──
+        await Transaction.create([{
+          type: 'commission',
+          payment: payment._id,
+          booking: payment.booking,
+          user: payment.user,
+          credit: payment.platformFee,
+          metadata: {
+            property: payment.property
+          }
+        }], { session });
+
         result = { success: true, payment, booking };
       }
 
@@ -262,6 +298,18 @@ class PaymentService {
       { activeSubscription: subscription._id, subscriptionStatus: 'active' },
       { session }
     );
+
+    // ── Ledger Logging: Subscription ──
+    await Transaction.create([{
+      type: 'payment',
+      payment: payment._id,
+      user: payment.user,
+      credit: payment.totalAmount,
+      metadata: {
+        subscription: subscription._id,
+        plan: subscription.plan
+      }
+    }], { session });
 
     logger.info(`[Payment] Subscription ${subscription._id} ACTIVATED for user ${payment.user} — plan: ${subscription.plan}`);
 
@@ -344,10 +392,13 @@ class PaymentService {
    * Refund payment
    */
   async refundPayment(paymentId, reason = '', adminId = null) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
       logger.info(`[Payment] Refund request: ${paymentId}, reason: ${reason}`);
 
-      const payment = await Payment.findById(paymentId);
+      const payment = await Payment.findById(paymentId).session(session);
       if (!payment) {
         throw new AppError('Payment not found', 404);
       }
@@ -356,32 +407,112 @@ class PaymentService {
         throw new Error('Can only refund paid payments');
       }
 
+      // Prevent double refunds
+      if (payment.status === 'refunded' || payment.refundStatus === 'processed') {
+        throw new Error('Payment has already been refunded');
+      }
+
+      // Load associated booking
+      const booking = await Booking.findById(payment.booking).session(session);
+      if (!booking) {
+        throw new Error('Associated booking not found');
+      }
+
       // Get provider
       const provider = ProviderFactory.getProvider(payment.paymentMethod);
 
-      // Call provider refund (not all providers support it)
+      // Call provider refund
+      let providerResponse = { status: 'processed' }; // Default
       if (provider.refund) {
-        const refundResult = await provider.refund(payment.transactionId);
-        payment.refundTransactionId = refundResult.transactionId;
+        providerResponse = await provider.refund(payment.transactionId);
+        payment.refundTransactionId = providerResponse.transactionId;
       }
+
+      // ── Hardening: Refund Status Reconciliation ──
+      // If provider returns 'pending', we don't mark as processed yet
+      const finalRefundStatus = providerResponse.status === 'pending' ? 'pending' : 'processed';
 
       // Mark as refunded
       payment.status = 'refunded';
+      payment.refundStatus = finalRefundStatus;
       payment.refundReason = reason;
       payment.refundedAt = new Date();
-      await payment.save();
+      await payment.save({ session });
 
-      // Update booking
-      await Booking.findByIdAndUpdate(payment.booking, {
-        paymentStatus: 'refunded',
+      // Update booking to cancelled
+      booking.status = 'cancelled';
+      booking.paymentStatus = 'refunded';
+      booking.cancelledAt = new Date();
+      booking.cancelledBy = adminId;
+      booking.cancelReason = `Admin Refund: ${reason}`;
+      
+      booking.statusHistory.push({
+        status: 'cancelled',
+        changedBy: adminId,
+        changedAt: new Date(),
+        reason: `Admin Refund: ${reason}`,
       });
+      booking.lastActionBy = adminId;
+      booking.lastActionAt = new Date();
 
+      await booking.save({ session });
+
+      // ── Hardening: Property Status Race Condition Patch ──
+      if (booking.property_id) {
+        const otherActiveBooking = await Booking.findOne({
+          _id: { $ne: booking._id },
+          property_id: booking.property_id,
+          status: { $in: ['pending', 'approved', 'completed'] }
+        }).session(session);
+
+        if (!otherActiveBooking) {
+          await Property.findByIdAndUpdate(booking.property_id, {
+            status: 'available',
+          }, { session });
+          logger.info(`[Payment] Property ${booking.property_id} reverted to AVAILABLE`);
+        } else {
+          logger.info(`[Payment] Property ${booking.property_id} NOT reverted (active booking ${otherActiveBooking._id} exists)`);
+        }
+      }
+
+      // ── Ledger Logging: Refund ──
+      await Transaction.create([{
+        type: 'refund',
+        payment: payment._id,
+        booking: payment.booking,
+        user: payment.user,
+        debit: payment.totalAmount,
+        status: finalRefundStatus === 'processed' ? 'completed' : 'pending',
+        metadata: {
+          reason,
+          property: booking.property_id,
+          providerResponse
+        }
+      }], { session });
+
+      // Audit Log
+      await AuditLog.create([{
+        actor: adminId,
+        action: 'REFUND_PAYMENT',
+        targetType: 'Payment',
+        targetId: payment._id,
+        changes: {
+          before: { status: 'paid', refundStatus: 'none' },
+          after: { status: 'refunded', refundStatus: finalRefundStatus }
+        },
+        metadata: { reason, bookingId: booking._id }
+      }], { session });
+
+      await session.commitTransaction();
       logger.info(`[Payment] Refund completed: ${paymentId}, amount: ${payment.totalAmount}`);
 
       return payment;
     } catch (err) {
+      await session.abortTransaction();
       logger.error('[Payment] refundPayment error:', err);
       throw err;
+    } finally {
+      session.endSession();
     }
   }
 }

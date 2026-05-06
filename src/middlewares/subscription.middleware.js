@@ -27,6 +27,7 @@ const requireActiveSubscription = async (req, res, next) => {
     const sub = await Subscription.findOne({
       user:   req.user._id,
       status: 'active',
+      forceRevoked: false,
     });
 
     // No subscription found

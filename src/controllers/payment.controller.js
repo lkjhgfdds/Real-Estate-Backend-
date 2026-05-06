@@ -37,7 +37,7 @@ exports.checkout = async (req, res, next) => {
     if (booking.status !== 'approved') {
       return res.status(400).json({ status: 'fail', message: 'Booking must be approved before payment' });
     }
-    
+
     if (booking.paymentStatus && booking.paymentStatus !== 'not_initiated' && booking.paymentStatus !== 'failed') {
       return res.status(400).json({ status: 'fail', message: 'Payment already initiated or completed for this booking' });
     }
@@ -54,7 +54,7 @@ exports.checkout = async (req, res, next) => {
     // Amount MUST be calculated server-side
     const property = await Property.findById(booking.property_id);
     let amountToPay = 0;
-    
+
     if (booking.bookingType === 'sale') {
       amountToPay = booking.offerPrice || property.price;
     } else {
@@ -63,7 +63,7 @@ exports.checkout = async (req, res, next) => {
       const nights = Math.ceil((new Date(booking.end_date) - new Date(booking.start_date)) / MS_PER_DAY);
       amountToPay = (property.price * nights); // Simplified logic
     }
-    
+
     // Add 2.5% platform fee
     const platformFee = Math.round(amountToPay * 0.025 * 100) / 100;
     const finalAmount = amountToPay + platformFee;
@@ -75,8 +75,8 @@ exports.checkout = async (req, res, next) => {
     // const providerResult = await providerApi.createOrder({ amount: finalAmount });
     // For now, mocking provider URL:
     const providerOrderId = require('crypto').randomUUID();
-    const checkoutUrl = provider === 'paymob' 
-      ? `https://paymob.com/iframe/${providerOrderId}` 
+    const checkoutUrl = provider === 'paymob'
+      ? `https://paymob.com/iframe/${providerOrderId}`
       : `https://paypal.com/checkout/${providerOrderId}`;
 
     // Create Payment (Pending)
@@ -98,7 +98,7 @@ exports.checkout = async (req, res, next) => {
       }
     });
     await payment.save();
-    
+
     // Update booking status to pending_payment
     booking.paymentStatus = 'pending';
     await booking.save();

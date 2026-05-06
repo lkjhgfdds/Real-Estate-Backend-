@@ -3,6 +3,7 @@ const Property = require('../../models/property.model');
 const { sendBookingConfirmationEmail } = require('../../services/email.service');
 const { createNotification } = require('../../utils/notificationHelper');
 const logger = require('../../utils/logger');
+const AuditLog = require('../../models/auditLog.model');
 
 // ─── Create Booking (Unified: rent + sale) ────────────────────
 exports.createBooking = async (req, res, next) => {
@@ -145,15 +146,25 @@ exports.getUserBookings = async (req, res, next) => {
 // ─── Cancel Booking (Payment-Aware) ─────────────────────────
 exports.cancelBooking = async (req, res, next) => {
   try {
-    const booking = await Booking.findOne({ _id: req.params.id, user_id: req.user._id });
+    const booking = await Booking.findById(req.params.id).populate('property_id');
     if (!booking) {
       return res.status(404).json({ status: 'fail', message: req.t('BOOKING.NOT_FOUND') });
     }
+
+    const isBuyer = booking.user_id.toString() === req.user._id.toString();
+    const isOwner = booking.property_id && booking.property_id.owner.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isBuyer && !isOwner && !isAdmin) {
+      return res.status(403).json({ status: 'fail', message: req.t('COMMON.NOT_AUTHORIZED') });
+    }
+
     if (booking.status === 'cancelled' || booking.status === 'rejected' || booking.status === 'completed') {
       return res.status(400).json({ status: 'fail', message: req.t('BOOKING.ALREADY_PROCESSED') });
     }
-    // ── HARD RULE: Cannot cancel after payment ──
-    if (booking.paymentStatus === 'paid') {
+
+    // ── HARD RULE: Matrix Validation ──
+    if (booking.paymentStatus === 'paid' && !isAdmin) {
       return res.status(400).json({
         status: 'fail',
         code: 'CANNOT_CANCEL_PAID',
@@ -161,8 +172,21 @@ exports.cancelBooking = async (req, res, next) => {
       });
     }
 
-    const reason = req.body.reason || '';
+    if (isOwner && !isAdmin && booking.status === 'pending') {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Owners must use the reject endpoint for pending bookings.',
+      });
+    }
+
+    const reason = req.body.reason || 'No reason provided';
+    
+    // ── Apply Cancellation ──
     booking.status = 'cancelled';
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = req.user._id;
+    booking.cancelReason = reason;
+
     booking.statusHistory.push({
       status: 'cancelled',
       changedBy: req.user._id,
@@ -171,9 +195,40 @@ exports.cancelBooking = async (req, res, next) => {
     });
     booking.lastActionBy = req.user._id;
     booking.lastActionAt = new Date();
+    
     await booking.save();
 
-    logger.info(`[BOOKING] Booking ${booking._id} cancelled by user ${req.user._id}. Reason: ${reason}`);
+    // ── Patch: Property Status Race Condition ──
+    if (booking.property_id) {
+      const otherActiveBooking = await Booking.findOne({
+        _id: { $ne: booking._id },
+        property_id: booking.property_id._id,
+        status: { $in: ['pending', 'approved', 'completed'] }
+      });
+
+      if (!otherActiveBooking) {
+        await Property.findByIdAndUpdate(booking.property_id._id, {
+          status: 'available',
+        });
+        logger.info(`[BOOKING] Property ${booking.property_id._id} reverted to AVAILABLE`);
+      }
+    }
+
+    // ── Audit Log ──
+    await AuditLog.create({
+      actor: req.user._id,
+      action: isAdmin ? 'ADMIN_CANCEL_BOOKING' : 'CANCEL_BOOKING',
+      targetType: 'Booking',
+      targetId: booking._id,
+      changes: {
+        before: { status: booking.statusHistory.length > 1 ? booking.statusHistory[booking.statusHistory.length - 2].status : 'unknown' },
+        after: { status: 'cancelled' }
+      },
+      metadata: { reason, role: req.user.role }
+    });
+
+    logger.info(`[BOOKING] Booking ${booking._id} cancelled by ${req.user.role} ${req.user._id}. Reason: ${reason}`);
+    
     res.status(200).json({ status: 'success', message: req.t('BOOKING.CANCELLED'), data: { booking } });
   } catch (err) {
     next(err);

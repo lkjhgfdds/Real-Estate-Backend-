@@ -114,6 +114,11 @@ const paymentSchema = new mongoose.Schema(
     webhookSignature: String,  // For webhook verification
 
     // ─── REFUND HANDLING ──────────────────────────────────────────
+    refundStatus: {
+      type: String,
+      enum: ['none', 'pending', 'processed', 'failed'],
+      default: 'none'
+    },
     refundReason: String,
     refundedAt: Date,
     refundTransactionId: String,

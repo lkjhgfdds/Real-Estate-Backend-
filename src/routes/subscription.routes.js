@@ -31,5 +31,6 @@ router.use(restrictTo('admin'));
 router.get('/admin/list', subscriptionController.adminListSubscriptions);
 router.get('/admin/revenue', subscriptionController.adminSubscriptionRevenue);
 router.patch('/admin/:id/activate', subscriptionController.adminActivateSubscription);
+router.patch('/admin/:id/hard-cancel', subscriptionController.hardCancelSubscription);
 
 module.exports = router;

@@ -84,6 +84,18 @@ const subscriptionSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    // ── Hard Cancellation (Admin Revocation) ────────────────────
+    cancelledAt: Date,
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    cancelReason: String,
+    forceRevoked: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

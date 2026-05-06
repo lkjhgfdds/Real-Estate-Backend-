@@ -196,7 +196,7 @@ exports.recentUsers = async (req, res, next) => {
         .sort('-createdAt')
         .skip(skip)
         .limit(limit)
-        .select('name email role createdAt isActive isBanned isVerified kycStatus photo')
+        .select('name email role createdAt isActive isBanned isVerified kycStatus photo activeSubscription subscriptionStatus')
         .lean(),
       User.countDocuments(filter),
     ]);

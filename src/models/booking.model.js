@@ -59,6 +59,11 @@ const bookingSchema = new mongoose.Schema(
       default: 'pending',
     },
 
+    // ── CANCELLATION DETAILS ────────────────────────────────────
+    cancelledAt: Date,
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    cancelReason: String,
+
     // AUDIT TRAIL & HISTORY
     statusHistory: [
       {

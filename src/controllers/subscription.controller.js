@@ -4,6 +4,8 @@
 
 const Subscription = require('../models/subscription.model');
 const User = require('../models/user.model');
+const Property = require('../models/property.model');
+const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { logAction } = require('../services/audit.service');
 const { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUS } = require('../utils/constants');
@@ -491,5 +493,85 @@ exports.adminSubscriptionRevenue = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+/**
+ * PATCH /api/v1/subscriptions/admin/:id/hard-cancel
+ * Admin immediately revokes subscription and optionally archives all listings.
+ */
+exports.hardCancelSubscription = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const sub = await Subscription.findById(req.params.id).session(session);
+
+    if (!sub) {
+      return res.status(404).json({ status: 'fail', message: 'Subscription not found' });
+    }
+
+    if (sub.status !== SUBSCRIPTION_STATUS.ACTIVE) {
+      return res.status(400).json({ status: 'fail', message: 'Only active subscriptions can be hard cancelled' });
+    }
+
+    const reason = req.body.reason || 'Hard cancelled by admin';
+
+    // 1. Mark subscription as cancelled and force revoked
+    sub.status = SUBSCRIPTION_STATUS.CANCELLED;
+    sub.cancelledAt = new Date();
+    sub.cancelledBy = req.user._id;
+    sub.cancelReason = reason;
+    sub.forceRevoked = true;
+
+    await sub.save({ session });
+
+    // 2. Clear active subscription reference from User
+    await User.findByIdAndUpdate(sub.user, {
+      activeSubscription: null,
+      subscriptionStatus: 'none',
+    }, { session });
+
+    // 3. Optional: Archive all user properties
+    let propertyCount = 0;
+    if (req.body.forceDeactivateListings === true) {
+      const result = await Property.updateMany(
+        { owner: sub.user, status: { $ne: 'archived' } },
+        { status: 'archived' },
+        { session }
+      );
+      propertyCount = result.modifiedCount || result.nModified || 0;
+    }
+
+    // 4. Log Action
+    await logAction(
+      req.user._id, 
+      'ADMIN_HARD_CANCEL_SUBSCRIPTION', 
+      'Subscription', 
+      sub._id,
+      { 
+        before: { status: SUBSCRIPTION_STATUS.ACTIVE, forceRevoked: false },
+        after: { status: SUBSCRIPTION_STATUS.CANCELLED, forceRevoked: true, listingsArchived: propertyCount }
+      },
+      { ip: req.ip, userAgent: req.headers['user-agent'], reason }
+    );
+
+    await session.commitTransaction();
+    logger.info(`[SUBSCRIPTION] Admin ${req.user._id} hard-cancelled subscription ${sub._id} for user ${sub.user}. Listings archived: ${propertyCount}`);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Subscription has been immediately revoked and locked.',
+      data: {
+        subscriptionId: sub._id,
+        listingsArchived: propertyCount
+      }
+    });
+
+  } catch (err) {
+    await session.abortTransaction();
+    next(err);
+  } finally {
+    session.endSession();
   }
 };
