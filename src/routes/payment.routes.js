@@ -41,7 +41,7 @@ router.post(
   '/checkout',
   protect,
   requireKYC,
-  paymentController.initiatePayment
+  paymentController.checkout
 );
 
 /**

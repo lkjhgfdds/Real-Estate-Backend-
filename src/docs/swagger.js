@@ -57,7 +57,7 @@ const options = {
           _id: { type: 'string' }, startingPrice: { type: 'number' }, currentBid: { type: 'number' },
           bidIncrement: { type: 'number' }, startDate: { type: 'string', format: 'date-time' },
           endDate: { type: 'string', format: 'date-time' },
-          status: { type: 'string', enum: ['upcoming','active','closed','cancelled'] }, isApproved: { type: 'boolean' },
+          status: { type: 'string', enum: ['upcoming','active','closed','cancelled'] }, approvalStatus: { type: 'string', enum: ['pending','approved','rejected','archived'] },
         }},
         Notification: { type: 'object', properties: {
           _id: { type: 'string' },

@@ -70,7 +70,11 @@ const propertySchema = new mongoose.Schema(
       set: (val) => Math.round(val * 10) / 10,
     },
     reviewCount: { type: Number, default: 0 },
-    isApproved:  { type: Boolean, default: false }, // العقار يحتاج موافقة الأدمن قبل النشر
+    approvalStatus: { 
+      type: String, 
+      enum: ['pending', 'approved', 'rejected', 'archived'], 
+      default: 'pending' 
+    },
   },
   {
     timestamps: true,
@@ -87,7 +91,7 @@ propertySchema.index({ listingType: 1 });
 propertySchema.index({ 'location.city': 1 });
 propertySchema.index({ owner: 1 });
 propertySchema.index({ status: 1 });
-propertySchema.index({ isApproved: 1, status: 1 });
+propertySchema.index({ approvalStatus: 1, status: 1 });
 propertySchema.index({ owner: 1, createdAt: -1 });
 
 // Compound indexes for optimized filtering

@@ -143,6 +143,7 @@ class PaymentService {
    * B) Polling query to provider API
    * 
    * CRITICAL: Idempotency guard prevents webhook from processing twice
+   * CRITICAL: Handles both booking AND subscription payment types
    */
   async verifyPayment(paymentId, webhookData = null) {
     const session = await mongoose.startSession();
@@ -191,45 +192,43 @@ class PaymentService {
         throw new Error('Payment verification failed');
       }
 
-      // ─────────────────────────────────────────────────────────────
-      // SUCCESS: Update payment and booking atomically
-      // ─────────────────────────────────────────────────────────────
-      payment.isVerified = true; // ← IDEMPOTENCY FLAG (prevents re-processing)
-      payment.status = 'paid';
+      // ──────────────────────────────────────────────────────────────
+      // SUCCESS: Update payment atomically
+      // ──────────────────────────────────────────────────────────────
+      payment.isVerified    = true; // ← IDEMPOTENCY FLAG
+      payment.status        = 'paid';
       payment.transactionId = verified.transactionId;
-      payment.verifiedAt = new Date();
-      payment.metadata = { ...payment.metadata, ...verified.metadata };
+      payment.verifiedAt    = new Date();
+      payment.metadata      = { ...payment.metadata, ...verified.metadata };
       await payment.save({ session });
 
-      logger.info(`[Payment] Payment verified and marked PAID: ${paymentId}`);
+      logger.info(`[Payment] Payment verified and marked PAID: ${paymentId} (type: ${payment.paymentType})`);
 
-      // Update booking status
-      const booking = await Booking.findByIdAndUpdate(
-        payment.booking,
-        {
-          paymentStatus: 'paid',
-          paidAmount: payment.totalAmount,
-        },
-        { session, new: true }
-      );
+      let result = { success: true, payment };
 
-      // Update property metadata (increment successful bookings)
-      await Property.findByIdAndUpdate(
-        payment.property,
-        { $inc: { successfulBookings: 1 } },
-        { session }
-      );
+      // ── Route to correct post-payment handler based on type ────────
+      if (payment.paymentType === 'subscription') {
+        result = await this.activateSubscriptionFromPayment(payment, session);
+      } else {
+        // Booking payment — update booking + property
+        const booking = await Booking.findByIdAndUpdate(
+          payment.booking,
+          { paymentStatus: 'paid', paidAmount: payment.totalAmount },
+          { session, new: true }
+        );
+
+        await Property.findByIdAndUpdate(
+          payment.property,
+          { $inc: { successfulBookings: 1 } },
+          { session }
+        );
+
+        logger.info(`[Payment] Booking ${booking._id} marked as PAID`);
+        result = { success: true, payment, booking };
+      }
 
       await session.commitTransaction();
-
-      // Emit event for workers/webhooks (e.g., send confirmation email)
-      logger.info(`[Payment] Transaction complete. Booking ${booking._id} marked as PAID`);
-
-      return {
-        success: true,
-        payment,
-        booking,
-      };
+      return result;
     } catch (err) {
       await session.abortTransaction();
       logger.error('[Payment] verifyPayment error:', err);
@@ -238,6 +237,38 @@ class PaymentService {
       session.endSession();
     }
   }
+
+  /**
+   * Activate subscription after successful payment webhook
+   * SOURCE OF TRUTH — only called by verifyPayment after webhook verification
+   */
+  async activateSubscriptionFromPayment(payment, session) {
+    const Subscription = require('../models/subscription.model');
+
+    const subscription = await Subscription.findById(payment.subscription).session(session);
+    if (!subscription) {
+      throw new AppError(`Subscription ${payment.subscription} not found`, 404);
+    }
+
+    // Activate subscription
+    subscription.status          = 'active';
+    subscription.paymentVerified = true;   // ← HARD GATE CLEARED
+    subscription.transactionId   = payment.transactionId;
+    await subscription.save({ session });
+
+    // Update user record
+    await User.findByIdAndUpdate(
+      payment.user,
+      { activeSubscription: subscription._id, subscriptionStatus: 'active' },
+      { session }
+    );
+
+    logger.info(`[Payment] Subscription ${subscription._id} ACTIVATED for user ${payment.user} — plan: ${subscription.plan}`);
+
+    return { success: true, payment, subscription };
+  }
+
+
 
   /**
    * Get payment status

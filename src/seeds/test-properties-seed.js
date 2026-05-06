@@ -34,7 +34,7 @@ const TEST_PROPERTIES = [
       'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
       'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80'
     ],
-    isApproved: true
+    approvalStatus: 'approved'
   },
   {
     title: 'Mediterranean Luxury Villa',
@@ -57,7 +57,7 @@ const TEST_PROPERTIES = [
       'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&q=80',
       'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80'
     ],
-    isApproved: true
+    approvalStatus: 'approved'
   },
   {
     title: 'Contemporary Office Space in DIFC',
@@ -80,7 +80,7 @@ const TEST_PROPERTIES = [
       'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&q=80',
       'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800&q=80'
     ],
-    isApproved: true
+    approvalStatus: 'approved'
   },
   {
     title: 'Charming Family House with Backyard',
@@ -103,7 +103,7 @@ const TEST_PROPERTIES = [
       'https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800&q=80',
       'https://images.unsplash.com/photo-1449156001437-3a16d1daaa39?w=800&q=80'
     ],
-    isApproved: true
+    approvalStatus: 'approved'
   },
   {
     title: 'Retail Shop in High-Traffic Area',
@@ -126,7 +126,7 @@ const TEST_PROPERTIES = [
       'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?w=800&q=80',
       'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80'
     ],
-    isApproved: true
+    approvalStatus: 'approved'
   }
 ];
 

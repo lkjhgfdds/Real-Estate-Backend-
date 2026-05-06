@@ -59,7 +59,7 @@ exports.getAllProperties = asyncHandler(async (req, res) => {
     if (rawQuery.maxPrice) { rawQuery.price.$lte = Number(rawQuery.maxPrice); delete rawQuery.maxPrice; }
   }
 
-  const features = new APIFeatures(Property.find({ isApproved: true }), rawQuery)
+  const features = new APIFeatures(Property.find({ approvalStatus: 'approved' }), rawQuery)
     .filter()
     .search()
     .sort()
@@ -69,7 +69,7 @@ exports.getAllProperties = asyncHandler(async (req, res) => {
   // If using cursor, we don't strictly need total pages, but we keep it for backward compatibility
   const [properties, total] = await Promise.all([
     features.query.populate('owner', 'name email phone photo').lean(),
-    Property.countDocuments({ ...features.filterQuery, isApproved: true }),
+    Property.countDocuments({ ...features.filterQuery, approvalStatus: 'approved' }),
   ]);
 
   // Inject isFavorited using O(1) lookup to prevent N+1 queries

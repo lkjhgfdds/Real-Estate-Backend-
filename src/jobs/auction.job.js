@@ -21,7 +21,7 @@ const initAuctionJob = (io) => {
       const now = new Date();
 
       const activated = await Auction.updateMany(
-        { status: 'upcoming', isApproved: true, startDate: { $lte: now } },
+        { status: 'upcoming', approvalStatus: 'approved', startDate: { $lte: now } },
         { $set: { status: 'active' } }
       );
       if (activated.modifiedCount > 0) {

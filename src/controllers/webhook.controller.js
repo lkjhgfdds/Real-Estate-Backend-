@@ -120,23 +120,75 @@ exports.handlePaymobWebhook = asyncHandler(async (req, res, next) => {
   }
 
   const transaction = payload.obj || payload;
-  const paymentId   = transaction.merchant_order_id;
+  const providerOrderId = transaction.merchant_order_id;
 
-  if (!paymentId) {
-    return next(new AppError('Missing payment ID', 400));
+  if (!providerOrderId) {
+    return next(new AppError('Missing providerOrderId', 400));
   }
 
-  const payment = await Payment.findById(paymentId);
+  const payment = await Payment.findOne({ providerOrderId });
   if (!payment) return next(new AppError('Payment not found', 404));
 
-  // Idempotency: already processed — return 200 without re-crediting
+  // 2.5 Security: Amount Mismatch Check (Tampering prevention)
+  const webhookAmount = transaction.amount_cents / 100;
+  if (payment.amount !== webhookAmount) {
+    logger.error(`[Webhook/Paymob] Amount mismatch: DB=${payment.amount}, Webhook=${webhookAmount}`);
+    return next(new AppError('Payment amount mismatch (Tampering detected)', 400));
+  }
+
+  // 3. Idempotency: already processed
   if (payment.isVerified) {
-    logger.info(`[Webhook/Paymob] Already verified (idempotent): ${paymentId}`);
+    logger.info(`[Webhook/Paymob] Already verified (idempotent): ${providerOrderId}`);
     return res.status(200).json({ status: 'success', message: 'Payment already verified', duplicate: true });
   }
 
-  const result = await paymentService.verifyPayment(paymentId, transaction);
-  res.status(200).json({ status: 'success', message: 'Webhook processed', data: result });
+  // Check if payment was successful from provider payload
+  if (transaction.success === false || transaction.pending === true) {
+     payment.status = 'failed';
+     await payment.save();
+     return res.status(200).json({ status: 'success', message: 'Payment failed recorded' });
+  }
+
+  // 4. ATOMIC UPDATE
+  const session = await require('mongoose').startSession();
+  session.startTransaction();
+  try {
+    const Booking = require('../models/booking.model');
+    const Property = require('../models/property.model');
+
+    // Update payment
+    payment.status = 'paid';
+    payment.isVerified = true;
+    payment.paidAt = new Date();
+    payment.transactionId = transaction.id;
+    await payment.save({ session });
+
+    // Update booking
+    const booking = await Booking.findById(payment.booking).session(session);
+    if (booking) {
+      booking.status = 'completed';
+      booking.paymentStatus = 'paid';
+      await booking.save({ session });
+
+      // Update property
+      const property = await Property.findById(payment.property).session(session);
+      if (property) {
+        property.status = booking.bookingType === 'sale' ? 'sold' : 'reserved';
+        await property.save({ session });
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    logger.info(`[Webhook/Paymob] Atomic update successful for Payment ${payment._id}`);
+    res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error(`[Webhook/Paymob] Atomic update failed: ${error.message}`);
+    return next(new AppError('Database transaction failed', 500));
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -163,21 +215,70 @@ exports.handlePaypalWebhook = asyncHandler(async (req, res, next) => {
   }
 
   const resource  = payload.resource || {};
-  const customId  = resource.custom_id || resource.purchase_units?.[0]?.custom_id;
+  const providerOrderId  = resource.custom_id || resource.id; // Or however PayPal passes back the order ID
 
-  if (!customId) return next(new AppError('Missing custom_id', 400));
+  if (!providerOrderId) return next(new AppError('Missing providerOrderId', 400));
 
-  const payment = await Payment.findById(customId);
+  const payment = await Payment.findOne({ providerOrderId });
   if (!payment) return next(new AppError('Payment not found', 404));
 
-  // Idempotency guard
+  // 2.5 Security: Amount Mismatch Check (Tampering prevention)
+  const webhookAmount = parseFloat(resource.amount?.value || resource.amount?.total || 0);
+  if (payment.amount !== webhookAmount) {
+    logger.error(`[Webhook/PayPal] Amount mismatch: DB=${payment.amount}, Webhook=${webhookAmount}`);
+    return next(new AppError('Payment amount mismatch (Tampering detected)', 400));
+  }
+
+  // 3. Idempotency guard
   if (payment.isVerified) {
-    logger.info(`[Webhook/PayPal] Already verified (idempotent): ${customId}`);
+    logger.info(`[Webhook/PayPal] Already verified (idempotent): ${providerOrderId}`);
     return res.status(200).json({ status: 'success', message: 'Payment already verified', duplicate: true });
   }
 
-  const result = await paymentService.verifyPayment(customId, payload);
-  res.status(200).json({ status: 'success', message: 'Webhook processed', data: result });
+  // Handle Failure / Pending
+  if (resource.status !== 'COMPLETED' && resource.status !== 'APPROVED') {
+      payment.status = 'failed';
+      await payment.save();
+      return res.status(200).json({ status: 'success', message: 'Payment failed/pending recorded' });
+  }
+
+  // 4. ATOMIC UPDATE
+  const session = await require('mongoose').startSession();
+  session.startTransaction();
+  try {
+    const Booking = require('../models/booking.model');
+    const Property = require('../models/property.model');
+
+    payment.status = 'paid';
+    payment.isVerified = true;
+    payment.paidAt = new Date();
+    payment.transactionId = resource.id;
+    await payment.save({ session });
+
+    const booking = await Booking.findById(payment.booking).session(session);
+    if (booking) {
+      booking.status = 'completed';
+      booking.paymentStatus = 'paid';
+      await booking.save({ session });
+
+      const property = await Property.findById(payment.property).session(session);
+      if (property) {
+        property.status = booking.bookingType === 'sale' ? 'sold' : 'reserved';
+        await property.save({ session });
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    logger.info(`[Webhook/PayPal] Atomic update successful for Payment ${payment._id}`);
+    res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error(`[Webhook/PayPal] Atomic update failed: ${error.message}`);
+    return next(new AppError('Database transaction failed', 500));
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

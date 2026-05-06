@@ -345,9 +345,8 @@ exports.recentProperties = async (req, res, next) => {
     }
 
     // 3. Filter by approval status
-    // Use $ne: true for pending to catch both false and undefined values
-    if (isApproved === 'true')  filter.isApproved = true;
-    if (isApproved === 'false') filter.isApproved = { $ne: true };
+    if (isApproved === 'true')  filter.approvalStatus = 'approved';
+    if (isApproved === 'false') filter.approvalStatus = { $ne: 'approved' };
 
     // 4. Filter by listing status (available, reserved, sold)
     if (status && status !== 'all') {
@@ -490,19 +489,18 @@ exports.approveProperty = async (req, res, next) => {
     }
 
     // Business Guard
-    if (existing.isApproved) {
+    if (existing.approvalStatus === 'approved') {
       if (session) await session.abortTransaction();
       return res.status(400).json({ status: 'fail', message: 'Property is already approved.' });
     }
 
-    existing.isApproved = true;
+    existing.approvalStatus = 'approved';
     existing.status = 'available';
     await existing.save({ session });
 
-    // ── Audit Trail ──────────────────────────────────────────────
     await logAction(
       req.user._id, 'APPROVE_PROPERTY', 'Property', existing._id,
-      { before: { isApproved: false, status: existing.status }, after: { isApproved: true, status: 'available' } },
+      { before: { approvalStatus: 'pending', status: existing.status }, after: { approvalStatus: 'approved', status: 'available' } },
       { ip: req.ip, userAgent: req.headers['user-agent'], session }
     );
 
@@ -530,21 +528,21 @@ exports.rejectProperty = async (req, res, next) => {
     }
 
     // Business Guard
-    if (!existing.isApproved && existing.status === 'unavailable') {
+    if (existing.approvalStatus === 'rejected' && existing.status === 'unavailable') {
       if (session) await session.abortTransaction();
       return res.status(400).json({ status: 'fail', message: 'Property is already rejected/unavailable.' });
     }
 
     const prevStatus = existing.status;
-    const prevApproved = existing.isApproved;
-    existing.isApproved = false;
+    const prevApproved = existing.approvalStatus;
+    existing.approvalStatus = 'rejected';
     existing.status = 'unavailable';
     await existing.save({ session });
 
     // ── Audit Trail ──────────────────────────────────────────────
     await logAction(
       req.user._id, 'REJECT_PROPERTY', 'Property', existing._id,
-      { before: { isApproved: prevApproved, status: prevStatus }, after: { isApproved: false, status: 'unavailable' } },
+      { before: { approvalStatus: prevApproved, status: prevStatus }, after: { approvalStatus: 'rejected', status: 'unavailable' } },
       { ip: req.ip, userAgent: req.headers['user-agent'], reason: req.body.reason || null, session }
     );
 

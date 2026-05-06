@@ -15,7 +15,7 @@ const subscriptionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'expired', 'cancelled'],
+      enum: ['pending', 'active', 'expired', 'cancelled'],
       default: 'active',
       index: true,
     },
@@ -60,6 +60,18 @@ const subscriptionSchema = new mongoose.Schema(
     // ── Payment Reference ───────────────────────────────────────
     paymentMethod: String,
     transactionId: String,
+
+    // ── Payment Verification (HARD GATE) ────────────────────────
+    // Source of truth: set to true ONLY by webhook, never by frontend
+    paymentVerified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    pendingPaymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Payment',
+    },
 
     // ── Admin Activation ────────────────────────────────────────
     activatedBy: {

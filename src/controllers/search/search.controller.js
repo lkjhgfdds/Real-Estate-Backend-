@@ -15,7 +15,7 @@ exports.advancedSearch = asyncHandler(async (req, res) => {
     page = 1, limit = 12,
   } = req.query;
 
-  const filter = { isApproved: true, status: 'available' };
+  const filter = { approvalStatus: 'approved', status: 'available' };
 
   // Text search — using MongoDB text index for O(log n) performance instead of O(n) $regex
   // FIX — Confirmed use of $text to ensure best performance
@@ -140,7 +140,7 @@ exports.getSimilarProperties = asyncHandler(async (req, res, next) => {
     type:        property.type,
     listingType: property.listingType,
     'location.city': property.location?.city,
-    isApproved:  true,
+    approvalStatus:  'approved',
     status:      'available',
     price:       { $gte: property.price * 0.7, $lte: property.price * 1.3 },
   })

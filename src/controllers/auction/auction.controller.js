@@ -70,7 +70,7 @@ exports.getAllAuctions = asyncHandler(async (req, res) => {
   if (status) filter.status = status;
 
   const isAdmin = req.user?.role === 'admin';
-  if (!isAdmin) filter.isApproved = true;
+  if (!isAdmin) filter.approvalStatus = 'approved';
 
   const skip  = (Number(page) - 1) * Number(limit);
   const total = await Auction.countDocuments(filter);
@@ -247,7 +247,7 @@ exports.getMyAuctions = asyncHandler(async (req, res) => {
 exports.approveAuction = asyncHandler(async (req, res, next) => {
   const auction = await Auction.findByIdAndUpdate(
     req.params.id,
-    { isApproved: true }, // FIX — حذف status: 'active' من هنا
+    { approvalStatus: 'approved' }, // FIX — حذف status: 'active' من هنا
     { new: true }
   ).populate('property', 'title location images price');
 

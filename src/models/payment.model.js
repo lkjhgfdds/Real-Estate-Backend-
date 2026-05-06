@@ -9,48 +9,44 @@ const mongoose = require('mongoose');
 
 const paymentSchema = new mongoose.Schema(
   {
+    // ─── TYPE: booking (property) | subscription (plan) ──────────
+    paymentType: {
+      type: String,
+      enum: ['booking', 'subscription'],
+      required: [true, 'Payment type is required'],
+      default: 'booking',
+      index: true,
+    },
+
     // ─── REFERENCES ───────────────────────────────────────────────
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'User is required'],
       index: true,
-      // Alias: use 'userId' as an interchangeable query key in aggregations
-      // Note: Mongoose alias is not supported on ObjectId fields natively.
-      // Use the 'user' field directly. See docs/schemas.md for cross-model naming guide.
     },
+    // For booking payments
     property: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Property',
-      required: [true, 'Property is required'],
     },
     booking: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
-      required: [true, 'Booking is required'],
+      index: true,
+    },
+    // For subscription payments
+    subscription: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Subscription',
       index: true,
     },
 
     // ─── AMOUNT CALCULATION (Server-validated only) ───────────────
-    propertyPrice: {
+    amount: {
       type: Number,
-      required: [true, 'Property price is required'],
+      required: [true, 'Amount is required'],
       min: 0,
-    },
-    platformFee: {
-      type: Number,
-      default: 0,
-      min: 0,  // Usually 2.5% of propertyPrice
-    },
-    netAmount: {
-      type: Number,
-      required: [true, 'Net amount is required'],
-      min: 0,  // Amount owner receives (propertyPrice only, no fee)
-    },
-    totalAmount: {
-      type: Number,
-      required: [true, 'Total amount is required'],
-      min: 0,  // What user pays = propertyPrice + platformFee
     },
     currency: {
       type: String,
@@ -79,9 +75,21 @@ const paymentSchema = new mongoose.Schema(
     },
 
     // ─── PROVIDER INTEGRATION ─────────────────────────────────────
-    paymentKey: String,  // From Paymob/PayPal/provider
+    provider: {
+      type: String,
+      enum: ['paymob', 'paypal'],
+      required: true,
+    },
     transactionId: String,  // Provider transaction ID
-    provider: String,  // 'paymob', 'paypal', etc.
+    providerOrderId: {
+      type: String,
+      required: true,
+      index: true,
+    },
+    idempotencyKey: {
+      type: String,
+      index: true,
+    },
 
     // ─── CRITICAL: IDEMPOTENCY GUARD ──────────────────────────────
     // Prevents webhook from being processed twice and creating double credit
@@ -98,7 +106,7 @@ const paymentSchema = new mongoose.Schema(
       default: () => new Date(Date.now() + 30 * 60 * 1000),
       index: true,  // For cron job to find expired payments
     },
-    verifiedAt: Date,
+    paidAt: Date,
 
     // ─── SECURITY & AUDIT ─────────────────────────────────────────
     ipAddress: String,
@@ -112,8 +120,9 @@ const paymentSchema = new mongoose.Schema(
 
     // ─── METADATA (flexible for provider-specific data) ────────────
     metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {},
+      bookingType: { type: String, enum: ['rent', 'sale'] },
+      nights: { type: Number },
+      offerPrice: { type: Number },
     },
   },
   { timestamps: true }
@@ -131,7 +140,7 @@ paymentSchema.index(
     unique: true,
     sparse: true,
     partialFilterExpression: {
-      status: { $in: ['pending', 'completed'] },
+      status: { $in: ['pending', 'paid'] },
     },
   }
 );
@@ -140,6 +149,7 @@ paymentSchema.index(
 paymentSchema.index({ user: 1, status: 1 }); // Index for dashboard aggregations
 paymentSchema.index({ user: 1, createdAt: -1 });
 paymentSchema.index({ property: 1, createdAt: -1 });
-paymentSchema.index({ transactionId: 1 }, { sparse: true });
+paymentSchema.index({ providerOrderId: 1 });
+paymentSchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);

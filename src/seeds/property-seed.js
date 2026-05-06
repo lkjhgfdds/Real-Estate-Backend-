@@ -24,7 +24,7 @@ const seedProperties = async () => {
           street: 'Nile St.'
         },
         owner: '69f21e67e7e2a05efc53cf4e', // الـ ID بتاعك من اللوجن
-        isApproved: true, // عشان تظهر في البحث
+        approvalStatus: 'approved', // عشان تظهر في البحث
         status: 'available',
         images: ['https://res.cloudinary.com/demo/image/upload/v1631533327/sample.jpg'],
         area: 450
@@ -41,7 +41,7 @@ const seedProperties = async () => {
           street: 'Main Road'
         },
         owner: '69f21e67e7e2a05efc53cf4e',
-        isApproved: true,
+        approvalStatus: 'approved',
         status: 'available',
         images: ['https://res.cloudinary.com/demo/image/upload/v1631533327/sample.jpg'],
         area: 120

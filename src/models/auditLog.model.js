@@ -78,7 +78,7 @@ const auditLogSchema = new Schema(
 
     /**
      * Before/after state snapshot for diff visualization.
-     * Example: { before: { isApproved: false }, after: { isApproved: true } }
+     * Example: { before: { approvalStatus: 'pending' }, after: { approvalStatus: 'approved' } }
      */
     changes: {
       type: Schema.Types.Mixed,

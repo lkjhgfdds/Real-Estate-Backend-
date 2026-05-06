@@ -18,19 +18,39 @@ const bookingSchema = new mongoose.Schema(
       required: true,
       alias: 'propertyId',
     },
-    amount: {
-      type: Number,
-      required: true,
+
+    // ── Unified Booking Type (rent | sale) ──────────────────────
+    bookingType: {
+      type: String,
+      enum: ['rent', 'sale'],
+      required: [true, 'Booking type (rent/sale) is required'],
+      index: true,
     },
+
+    // ── Rent: date range ────────────────────────────────────────
     start_date: {
       type: Date,
-      required: true,
       alias: 'startDate',
     },
     end_date: {
       type: Date,
-      required: true,
       alias: 'endDate',
+    },
+
+    // ── Sale: offer price ────────────────────────────────────────
+    offerPrice: {
+      type: Number,
+      min: [0, 'Offer price cannot be negative'],
+    },
+
+    // ── Common ──────────────────────────────────────────────────
+    amount: {
+      type: Number,
+      required: true,
+    },
+    notes: {
+      type: String,
+      maxlength: [500, 'Notes cannot exceed 500 characters'],
     },
     // FIX — One enum instead of 3 confusing booleans
     status: {

@@ -17,7 +17,7 @@ const initSavedSearchJob = (io) => {
       // Get all new properties in one query
       const newProperties = await Property.find({
         createdAt: { $gte: oneHourAgo },
-        isApproved: true,
+        approvalStatus: 'approved',
         status: 'available',
       }).lean();
 

@@ -14,11 +14,16 @@ router.use(protect);
 router.get('/my', subscriptionController.getMySubscription);
 router.get('/history', subscriptionController.getMySubscriptionHistory);
 
+// Checkout: initiate payment for a subscription plan (Paymob/PayPal)
+// Must be placed BEFORE restrictTo('owner','agent') to allow the request through
+router.post('/checkout', restrictTo('owner', 'agent'), subscriptionController.subscriptionCheckout);
+
 // Only owners and agents can subscribe/cancel
 router.use(restrictTo('owner', 'agent'));
 
 router.post('/subscribe', subscriptionController.subscribe);
 router.post('/cancel', subscriptionController.cancelSubscription);
+
 
 // ── Admin Endpoints ──────────────────────────────────────────────────────
 router.use(restrictTo('admin'));

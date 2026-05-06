@@ -69,10 +69,159 @@ exports.getMySubscriptionHistory = async (req, res, next) => {
 };
 
 /**
+ * POST /api/v1/subscriptions/checkout
+ * Initiate a payment session for a subscription plan.
+ * Returns a payment URL — subscription is activated ONLY via webhook.
+ */
+exports.subscriptionCheckout = async (req, res, next) => {
+  try {
+    const { plan, paymentMethod } = req.body;
+
+    // Validate plan
+    if (!plan || !SUBSCRIPTION_PLANS[plan]) {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Invalid plan. Available plans: ${Object.keys(SUBSCRIPTION_PLANS).join(', ')}`,
+      });
+    }
+
+    const validMethods = ['paymob', 'paypal'];
+    if (!paymentMethod || !validMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Invalid payment method. Use: ${validMethods.join(', ')}`,
+      });
+    }
+
+    // Check for existing active subscription
+    const existing = await Subscription.findOne({
+      user: req.user._id,
+      status: SUBSCRIPTION_STATUS.ACTIVE,
+    });
+    if (existing) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'You already have an active subscription.',
+        data: { currentPlan: existing.plan, endDate: existing.endDate },
+      });
+    }
+
+    // Check for existing pending subscription (prevent duplicate checkout)
+    const pendingSub = await Subscription.findOne({
+      user: req.user._id,
+      status: 'pending',
+    });
+    if (pendingSub) {
+      return res.status(400).json({
+        status: 'fail',
+        code: 'PENDING_SUBSCRIPTION_EXISTS',
+        message: 'You have a pending subscription payment. Please complete or cancel it first.',
+      });
+    }
+
+    const planConfig = SUBSCRIPTION_PLANS[plan];
+    const startDate  = new Date();
+    const endDate    = new Date(startDate.getTime() + planConfig.durationDays * 24 * 60 * 60 * 1000);
+
+    // 1. Create pending subscription (activated by webhook later)
+    const subscription = await Subscription.create({
+      user:                    req.user._id,
+      plan,
+      status:                  'pending',    // NOT active yet!
+      maxListings:             planConfig.maxListings,
+      listingsUsedThisMonth:   0,
+      price:                   planConfig.price,
+      currency:                planConfig.currency || 'EGP',
+      startDate,
+      endDate,
+      paymentMethod,
+      paymentVerified:         false,        // Set to true by webhook ONLY
+    });
+
+    // 2. Create pending Payment record (Transaction Layer)
+    const Payment = require('../models/payment.model');
+    const ProviderFactory = require('../services/providers/factory');
+    const logger = require('../utils/logger');
+
+    const platformFee = Math.round(planConfig.price * 0.025 * 100) / 100;
+    const payment = await Payment.create({
+      paymentType:  'subscription',
+      user:         req.user._id,
+      subscription: subscription._id,
+      propertyPrice: planConfig.price,
+      platformFee,
+      netAmount:    planConfig.price,
+      totalAmount:  planConfig.price + platformFee,
+      paymentMethod,
+      status:       'pending',
+      expiresAt:    new Date(Date.now() + 30 * 60 * 1000), // 30 min
+      ipAddress:    req.ip,
+      userAgent:    req.headers['user-agent'],
+    });
+
+    // Link payment to subscription
+    subscription.pendingPaymentId = payment._id;
+    await subscription.save();
+
+    // 3. Route to payment provider
+    let providerResult;
+    try {
+      const provider = ProviderFactory.getProvider(paymentMethod);
+      providerResult = await provider.createPayment({
+        amount:         payment.totalAmount,
+        paymentId:      payment._id.toString(),
+        userId:         req.user._id.toString(),
+        currency:       planConfig.currency || 'EGP',
+        description:    `Luxe Estates — ${planConfig.name} Plan`,
+        // No propertyId/bookingId for subscriptions
+      });
+    } catch (provErr) {
+      // Rollback: cancel pending payment + subscription
+      payment.status = 'failed';
+      await payment.save();
+      subscription.status = 'cancelled';
+      await subscription.save();
+      logger.error('[SUBSCRIPTION] Provider error:', provErr.message);
+      return next(new Error(`Payment provider error: ${provErr.message}`));
+    }
+
+    // Update payment with provider response
+    payment.paymentKey = providerResult.paymentKey || null;
+    payment.provider   = paymentMethod;
+    payment.metadata   = providerResult.metadata || {};
+    await payment.save();
+
+    logger.info(`[SUBSCRIPTION] Checkout initiated: user=${req.user._id}, plan=${plan}, payment=${payment._id}`);
+
+    res.status(200).json({
+      status:      'success',
+      message:     'Payment session created. Complete payment to activate subscription.',
+      data: {
+        paymentId:       payment._id,
+        subscriptionId:  subscription._id,
+        plan:            planConfig.name,
+        amount:          payment.totalAmount,
+        currency:        planConfig.currency || 'EGP',
+        paymentMethod,
+        expiresAt:       payment.expiresAt,
+        // Provider-specific redirect/iframe
+        paymentUrl:      providerResult.paymentUrl || null,
+        paymentKey:      providerResult.paymentKey || null,
+        iframeUrl:       providerResult.iframeKey  || null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /api/v1/subscriptions/subscribe
- * Create a new subscription (owner/agent only)
+ * Direct subscribe (admin-granted or cash — still creates active sub for backward compat).
+ * For gateway payments, use /subscriptions/checkout instead.
  */
 exports.subscribe = async (req, res, next) => {
+
   try {
     const { plan } = req.body;
 
@@ -118,6 +267,7 @@ exports.subscribe = async (req, res, next) => {
       endDate,
       paymentMethod: req.body.paymentMethod || 'manual',
       transactionId: req.body.transactionId || null,
+      paymentVerified: true, // Manual/cash subscriptions are considered verified
     });
 
     // Update user with subscription reference
@@ -257,6 +407,7 @@ exports.adminActivateSubscription = async (req, res, next) => {
       endDate,
       activatedBy: req.user._id,
       paymentMethod: 'admin_manual',
+      paymentVerified: true,  // Admin activation bypasses payment gateway
     });
 
     await User.findByIdAndUpdate(userId, {

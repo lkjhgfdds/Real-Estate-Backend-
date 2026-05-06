@@ -47,9 +47,10 @@ const auctionSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
-    isApproved: {
-      type: Boolean,
-      default: false,
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected', 'archived'],
+      default: 'pending',
     },
   },
   {
@@ -82,6 +83,6 @@ auctionSchema.index({ property: 1 });
 auctionSchema.index({ seller: 1 });
 auctionSchema.index({ status: 1 });
 auctionSchema.index({ endDate: 1 });
-auctionSchema.index({ isApproved: 1 });
+auctionSchema.index({ approvalStatus: 1 });
 
 module.exports = mongoose.model('Auction', auctionSchema);
